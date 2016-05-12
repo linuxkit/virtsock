@@ -1,7 +1,7 @@
 
 .PHONY: all hvstress hvgoecho
 
-all: hvstress hvgoecho
+all: hvgostress hvgoecho
 
 hvgostress: examples/hvgostress examples/hvgostress.exe
 hvgoecho: examples/hvgoecho examples/hvgoecho.exe
