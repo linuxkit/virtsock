@@ -1,0 +1,10 @@
+*.exe
+*.obj
+*.sdf
+*.vcxproj.user
+/hvecho
+/.vs
+/x64
+hvecho.*.db
+hvecho.*.opendb
+hvecho.vcxproj.filters

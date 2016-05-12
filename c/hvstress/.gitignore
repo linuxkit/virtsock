@@ -1,0 +1,10 @@
+*.exe
+*.obj
+*.sdf
+*.vcxproj.user
+/hvstress
+/.vs
+/x64
+hvstress.*.db
+hvstress.*.opendb
+hvstress.vcxproj.filters
