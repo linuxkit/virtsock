@@ -59,7 +59,7 @@ typedef struct _GUID {
 
 
 /* HV Socket definitions */
-#define AF_HYPERV 42
+#define AF_HYPERV 43
 #define HV_PROTOCOL_RAW 1
 
 typedef struct _SOCKADDR_HV

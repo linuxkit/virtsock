@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	AF_HYPERV     = 42
+	AF_HYPERV     = 43
 	SHV_PROTO_RAW = 1
 )
 
