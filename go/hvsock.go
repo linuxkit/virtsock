@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"sync"
 	"syscall"
@@ -79,6 +80,8 @@ func (a HypervAddr) String() string {
 }
 
 var (
+	Debug = false // Set to True to enable additional debug output
+
 	GUID_ZERO, _      = GuidFromString("00000000-0000-0000-0000-000000000000")
 	GUID_WILDCARD, _  = GuidFromString("00000000-0000-0000-0000-000000000000")
 	GUID_BROADCAST, _ = GuidFromString("FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")
@@ -197,7 +200,7 @@ func (v *HVsockConn) RemoteAddr() net.Addr {
 }
 
 func (v *HVsockConn) Close() error {
-	fmt.Printf("Close\n")
+	prDebug("Close\n")
 
 	v.readClosed = true
 	v.writeClosed = true
@@ -208,10 +211,11 @@ func (v *HVsockConn) Close() error {
 	v.wrlock.Lock()
 	n, err := v.write(b)
 	v.wrlock.Unlock()
-	fmt.Printf("TX: Close\n")
+	prDebug("TX: Close\n")
+
 	if err != nil {
 		// chances are that the other end beat us to the close
-		fmt.Printf("Mmmm. %s\n", err)
+		prDebug("Mmmm. %s\n", err)
 		return v.close()
 	}
 	if n != len(b) {
@@ -222,7 +226,7 @@ func (v *HVsockConn) Close() error {
 	// wait for reply/ignore errors
 	// we may get a EOF because the other end  closed,
 	_, _ = v.read(b)
-	fmt.Printf("close\n")
+	prDebug("close\n")
 	return v.close()
 }
 
@@ -300,19 +304,26 @@ func (v *HVsockConn) Read(buf []byte) (int, error) {
 			if msg == shutdownwr {
 				// The other end shutdown write. No point reading more
 				v.readClosed = true
-				fmt.Printf("RX: ShutdownWrite\n")
+				prDebug("RX: ShutdownWrite\n")
 				return 0, io.EOF
 			} else if msg == shutdownrd {
 				// The other end shutdown read. No point writing more
 				v.writeClosed = true
-				fmt.Printf("RX: ShutdownRead\n")
+				prDebug("RX: ShutdownRead\n")
 			} else if msg == closemsg {
 				// Setting write close here forces a proper close
 				v.writeClosed = true
-				fmt.Printf("RX: Close\n")
+				prDebug("RX: Close\n")
 				v.Close()
 			} else {
 				v.bytesToRead = msg
+				if v.bytesToRead == 0 {
+					// XXX Something is odd. If I don't have this here, this
+					// case is hit. However, with this code in place this
+					// case never get's hit. Suspect overly eager GC...
+					log.Printf("RX: Zero length %02x", b)
+					continue
+				}
 				break
 			}
 		}
@@ -323,7 +334,7 @@ func (v *HVsockConn) Read(buf []byte) (int, error) {
 	// in by the caller making sure we do not read mode than we
 	// should read by splicing the buffer.
 	toRead := min(len(buf), v.bytesToRead)
-	//fmt.Printf("READ:  %d len=0x%x\n", int(v.fd), toRead)
+	prDebug("READ:  %d len=0x%x\n", int(v.fd), toRead)
 	n, err := v.read(buf[:toRead])
 	if err != nil || n == 0 {
 		v.readClosed = true
@@ -342,8 +353,7 @@ func (v *HVsockConn) Write(buf []byte) (int, error) {
 	toWrite := len(buf)
 	written := 0
 
-	//fmt.Printf("WRITE: %d Total len=%x\n", int(v.fd), len(buf))
-	//fmt.Printf("FD: %d\n", int(v.fd))
+	prDebug("WRITE: %d Total len=%x\n", int(v.fd), len(buf))
 
 	for toWrite > 0 {
 		// We write batches of MSG + data which need to be
@@ -356,18 +366,18 @@ func (v *HVsockConn) Write(buf []byte) (int, error) {
 		v.wrlock.Lock()
 
 		thisBatch := min(toWrite, maxMsgSize)
-		//fmt.Printf("WRITE: %d len=%x\n", int(v.fd), thisBatch)
+		prDebug("WRITE: %d len=%x\n", int(v.fd), thisBatch)
 		// Write message header
 		binary.LittleEndian.PutUint32(b, uint32(thisBatch))
 		n, err := v.write(b)
 		if err != nil {
-			fmt.Printf("Write 1\n")
+			prDebug("Write Error 1\n")
 			v.wrlock.Unlock()
 			v.writeClosed = true
 			return 0, err
 		}
 		if n != len(b) {
-			fmt.Printf("Write 2\n")
+			prDebug("Write Error 2\n")
 			v.wrlock.Unlock()
 			v.writeClosed = true
 			return 0, errSocketMsgWrite
@@ -375,13 +385,13 @@ func (v *HVsockConn) Write(buf []byte) (int, error) {
 		// Write data
 		n, err = v.write(buf[written : written+thisBatch])
 		if err != nil {
-			fmt.Printf("Write 3\n")
+			prDebug("Write Error 3\n")
 			v.wrlock.Unlock()
 			v.writeClosed = true
 			return 0, err
 		}
 		if n != thisBatch {
-			fmt.Printf("Write 4\n")
+			prDebug("Write Error 4\n")
 			v.wrlock.Unlock()
 			v.writeClosed = true
 			return 0, errSocketNotEnoughData
@@ -396,3 +406,9 @@ func (v *HVsockConn) Write(buf []byte) (int, error) {
 
 // hvsockConn, SetDeadline(), SetReadDeadline(), and
 // SetWriteDeadline() are OS specific.
+
+func prDebug(format string, args ...interface{}) {
+	if Debug {
+		log.Printf(format, args...)
+	}
+}
