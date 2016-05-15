@@ -8,10 +8,12 @@ import (
 	"log"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"crypto/md5"
 	"math/rand"
+	"sync/atomic"
 
 	"../"
 )
@@ -24,7 +26,10 @@ var (
 	sleepTime   int
 	verbose     int
 	exitOnError bool
+	parallel    int
 	svcid, _    = hvsock.GuidFromString("3049197C-9A4E-4FBF-9367-97F792F16994")
+
+	connCounter int32
 )
 
 func init() {
@@ -33,6 +38,7 @@ func init() {
 	flag.IntVar(&maxDataLen, "l", 64*1024, "Maximum Length of data")
 	flag.IntVar(&connections, "i", 100, "Total number of connections")
 	flag.IntVar(&sleepTime, "w", 0, "Sleep time in seconds between new connections")
+	flag.IntVar(&parallel, "p", 1, "Run n connections in parallel")
 	flag.BoolVar(&exitOnError, "e", false, "Exit when an error occurs")
 	flag.IntVar(&verbose, "v", 0, "Set the verbosity level")
 
@@ -50,8 +56,10 @@ func main() {
 	if serverMode {
 		fmt.Printf("Starting server\n")
 		server()
+		return
 	}
 
+	// Client mode
 	vmid := hvsock.GUID_ZERO
 	var err error
 	if strings.Contains(clientStr, "-") {
@@ -65,11 +73,23 @@ func main() {
 		vmid = hvsock.GUID_LOOPBACK
 	}
 
-	fmt.Printf("Client connecting to %s\n", vmid.String())
-	for i := 0; i < connections; i++ {
-		client(vmid, i)
-		time.Sleep(time.Duration(sleepTime) * time.Second)
+	if parallel <= 1 {
+		// No parallelism, run in the main thread.
+		fmt.Printf("Client connecting to %s\n", vmid.String())
+		for i := 0; i < connections; i++ {
+			client(vmid, i)
+			time.Sleep(time.Duration(sleepTime) * time.Second)
+		}
+		return
 	}
+
+	// Parallel clients
+	var wg sync.WaitGroup
+	for i := 0; i < parallel; i++ {
+		wg.Add(1)
+		go parClient(&wg, vmid)
+	}
+	wg.Wait()
 }
 
 func server() {
@@ -124,6 +144,17 @@ func handleRequest(c net.Conn, connid int) {
 		return
 	}
 	prDebug("[%05d] Sent bye\n", connid)
+}
+
+func parClient(wg *sync.WaitGroup, vmid hvsock.GUID) {
+	connid := int(atomic.AddInt32(&connCounter, 1))
+	for connid < connections {
+		client(vmid, connid)
+		connid = int(atomic.AddInt32(&connCounter, 1))
+		time.Sleep(time.Duration(sleepTime) * time.Second)
+	}
+
+	wg.Done()
 }
 
 func client(vmid hvsock.GUID, conid int) {
