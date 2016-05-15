@@ -81,7 +81,7 @@ func newHVsockConn(h syscall.Handle, local HypervAddr, remote HypervAddr) (*HVso
 	if err != nil {
 		return nil, err
 	}
-	//runtime.SetFinalizer(v, (*hvsockConn).closeHandle)
+
 	return &HVsockConn{hvsockConn: *v}, nil
 }
 
@@ -128,7 +128,7 @@ func accept(s syscall.Handle, a *HypervAddr) (syscall.Handle, error) {
 //
 func (s *HVsockConn) close() error {
 	s.closeHandle()
-	//runtime.SetFinalizer(s, nil)
+
 	return nil
 }
 
