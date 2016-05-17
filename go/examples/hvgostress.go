@@ -15,7 +15,7 @@ import (
 	"math/rand"
 	"sync/atomic"
 
-	"../"
+	"../hvsock"
 )
 
 var (

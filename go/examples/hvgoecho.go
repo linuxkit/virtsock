@@ -9,7 +9,7 @@ import (
 	"net"
 	"strings"
 
-	"../"
+	"../hvsock"
 )
 
 var (
