@@ -1,5 +1,5 @@
 FROM golang:alpine
 
-RUN apk update && apk add alpine-sdk
+RUN apk update && apk add build-base
 
 WORKDIR /go/examples
