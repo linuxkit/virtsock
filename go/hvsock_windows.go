@@ -152,11 +152,12 @@ func (v *HVsockConn) read(buf []byte) (int, error) {
 	// Handle EOF conditions.
 	if err == nil && n == 0 && len(buf) != 0 {
 		return 0, io.EOF
-	} else if err == syscall.ERROR_BROKEN_PIPE {
-		return 0, io.EOF
-	} else {
-		return n, err
 	}
+	if err == syscall.ERROR_BROKEN_PIPE {
+		return 0, io.EOF
+	}
+
+	return n, err
 }
 
 // Underlying raw write() function.
@@ -268,41 +269,41 @@ func (v *hvsockConn) asyncIo(c *ioOperation, deadline time.Time, bytes uint32, e
 	if err != syscall.ERROR_IO_PENDING {
 		v.wg.Done()
 		return int(bytes), err
-	} else {
-		var r ioResult
-		wait := true
-		timedout := false
-		if v.closing {
-			cancelIoEx(v.fd, &c.o)
-		} else if !deadline.IsZero() {
-			now := time.Now()
-			if !deadline.After(now) {
-				timedout = true
-			} else {
-				timeout := time.After(deadline.Sub(now))
-				select {
-				case r = <-c.ch:
-					wait = false
-				case <-timeout:
-					timedout = true
-				}
-			}
-		}
-		if timedout {
-			cancelIoEx(v.fd, &c.o)
-		}
-		if wait {
-			r = <-c.ch
-		}
-		err = r.err
-		if err == syscall.ERROR_OPERATION_ABORTED {
-			if v.closing {
-				err = errSocketClosed
-			} else if timedout {
-				err = errTimeout
-			}
-		}
-		v.wg.Done()
-		return int(r.bytes), err
 	}
+
+	var r ioResult
+	wait := true
+	timedout := false
+	if v.closing {
+		cancelIoEx(v.fd, &c.o)
+	} else if !deadline.IsZero() {
+		now := time.Now()
+		if !deadline.After(now) {
+			timedout = true
+		} else {
+			timeout := time.After(deadline.Sub(now))
+			select {
+			case r = <-c.ch:
+				wait = false
+			case <-timeout:
+				timedout = true
+			}
+		}
+	}
+	if timedout {
+		cancelIoEx(v.fd, &c.o)
+	}
+	if wait {
+		r = <-c.ch
+	}
+	err = r.err
+	if err == syscall.ERROR_OPERATION_ABORTED {
+		if v.closing {
+			err = errSocketClosed
+		} else if timedout {
+			err = errTimeout
+		}
+	}
+	v.wg.Done()
+	return int(r.bytes), err
 }

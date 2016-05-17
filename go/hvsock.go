@@ -205,26 +205,19 @@ func (v *HVsockConn) Close() error {
 	v.readClosed = true
 	v.writeClosed = true
 
-	// Send close message
-	b := make([]byte, 4)
-	binary.LittleEndian.PutUint32(b, closemsg)
-	v.wrlock.Lock()
-	n, err := v.write(b)
-	v.wrlock.Unlock()
 	prDebug("TX: Close\n")
-
+	v.wrlock.Lock()
+	err := v.sendMsg(closemsg)
+	v.wrlock.Unlock()
 	if err != nil {
 		// chances are that the other end beat us to the close
 		prDebug("Mmmm. %s\n", err)
 		return v.close()
 	}
-	if n != len(b) {
-		v.close()
-		return errSocketMsgWrite
-	}
 
 	// wait for reply/ignore errors
 	// we may get a EOF because the other end  closed,
+	b := make([]byte, 4)
 	_, _ = v.read(b)
 	prDebug("close\n")
 	return v.close()
@@ -235,16 +228,12 @@ func (v *HVsockConn) CloseRead() error {
 		return errSocketReadClosed
 	}
 
-	b := make([]byte, 4)
-	binary.LittleEndian.PutUint32(b, shutdownrd)
+	prDebug("TX: Shutdown Read\n")
 	v.wrlock.Lock()
-	n, err := v.write(b)
+	err := v.sendMsg(shutdownrd)
 	v.wrlock.Unlock()
 	if err != nil {
 		return err
-	}
-	if n != len(b) {
-		return errSocketMsgWrite
 	}
 
 	v.readClosed = true
@@ -256,16 +245,12 @@ func (v *HVsockConn) CloseWrite() error {
 		return errSocketWriteClosed
 	}
 
-	b := make([]byte, 4)
-	binary.LittleEndian.PutUint32(b, shutdownwr)
+	prDebug("TX: Shutdown Write\n")
 	v.wrlock.Lock()
-	n, err := v.write(b)
+	err := v.sendMsg(shutdownwr)
 	v.wrlock.Unlock()
 	if err != nil {
 		return err
-	}
-	if n != len(b) {
-		return errSocketMsgWrite
 	}
 
 	v.writeClosed = true
@@ -349,52 +334,43 @@ func (v *HVsockConn) Write(buf []byte) (int, error) {
 		return 0, errSocketWriteClosed
 	}
 
-	b := make([]byte, 4)
+	var err error
 	toWrite := len(buf)
 	written := 0
 
 	prDebug("WRITE: %d Total len=%x\n", int(v.fd), len(buf))
 
 	for toWrite > 0 {
+		if v.writeClosed {
+			return 0, errSocketWriteClosed
+		}
+
 		// We write batches of MSG + data which need to be
 		// "atomic". We don't want to hold the lock for the
 		// entire Write() in case some other threads wants to
 		// send OOB data, e.g. for closing.
-		if v.writeClosed {
-			return 0, errSocketWriteClosed
-		}
+
 		v.wrlock.Lock()
 
 		thisBatch := min(toWrite, maxMsgSize)
 		prDebug("WRITE: %d len=%x\n", int(v.fd), thisBatch)
 		// Write message header
-		binary.LittleEndian.PutUint32(b, uint32(thisBatch))
-		n, err := v.write(b)
+		err = v.sendMsg(uint32(thisBatch))
 		if err != nil {
-			prDebug("Write Error 1\n")
-			v.wrlock.Unlock()
-			v.writeClosed = true
-			return 0, err
+			prDebug("Write MSG Error: %s\n", err)
+			goto ErrOut
 		}
-		if n != len(b) {
-			prDebug("Write Error 2\n")
-			v.wrlock.Unlock()
-			v.writeClosed = true
-			return 0, errSocketMsgWrite
-		}
+
 		// Write data
-		n, err = v.write(buf[written : written+thisBatch])
+		n, err := v.write(buf[written : written+thisBatch])
 		if err != nil {
 			prDebug("Write Error 3\n")
-			v.wrlock.Unlock()
-			v.writeClosed = true
-			return 0, err
+			goto ErrOut
 		}
 		if n != thisBatch {
 			prDebug("Write Error 4\n")
-			v.wrlock.Unlock()
-			v.writeClosed = true
-			return 0, errSocketNotEnoughData
+			err = errSocketNotEnoughData
+			goto ErrOut
 		}
 		toWrite -= n
 		written += n
@@ -402,10 +378,32 @@ func (v *HVsockConn) Write(buf []byte) (int, error) {
 	}
 
 	return written, nil
+
+ErrOut:
+	v.wrlock.Unlock()
+	v.writeClosed = true
+	return 0, err
 }
 
 // hvsockConn, SetDeadline(), SetReadDeadline(), and
 // SetWriteDeadline() are OS specific.
+
+// Send a message to the other end
+// The Lock must be held to call this functions
+func (v *HVsockConn) sendMsg(msg uint32) error {
+	b := make([]byte, 4)
+
+	binary.LittleEndian.PutUint32(b, msg)
+	n, err := v.write(b)
+	if err != nil {
+		prDebug("Write Error 1\n")
+		return err
+	}
+	if n != len(b) {
+		return errSocketMsgWrite
+	}
+	return nil
+}
 
 func prDebug(format string, args ...interface{}) {
 	if Debug {
