@@ -7,7 +7,7 @@ hvgostress: examples/hvgostress examples/hvgostress.exe
 hvgoecho: examples/hvgoecho examples/hvgoecho.exe
 
 
-DEPS:=$(wildcard *.go)  Dockerfile Makefile
+DEPS:=$(wildcard hvsock/*.go)  Dockerfile Makefile
 
 examples/hvgostress: examples/hvgostress.go $(DEPS)
 	docker build -t hvsock:build .
