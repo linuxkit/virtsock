@@ -5,12 +5,11 @@
  * - Add more concurrency
  * - Verify that the data send is the same as received.
  */
+#include "compat.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "compat.h"
 
 /* 3049197C-9A4E-4FBF-9367-97F792F16994 */
 DEFINE_GUID(MY_SERVICE_GUID,
@@ -247,7 +246,7 @@ static int client(GUID target)
 
     tosend = rand();
     if (RAND_MAX < MAX_BUF_LEN)
-        tosend = (double)tosend / ((long long)RAND_MAX + 1) *  (MAX_BUF_LEN - 1) + 1;
+        tosend = (int)((double)tosend / ((long long)RAND_MAX + 1) *  (MAX_BUF_LEN - 1) + 1);
     else
         tosend = tosend % (MAX_BUF_LEN - 1) + 1;
 

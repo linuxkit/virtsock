@@ -2,8 +2,11 @@
  * Compatibility layer between Windows and Linux
  */
 #ifdef _MSC_VER
+
 #undef UNICODE
 #define WIN32_LEAN_AND_MEAN
+#define _CRT_SECURE_NO_WARNINGS
+
 #include <windows.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -91,7 +94,7 @@ typedef HANDLE THREAD_HANDLE;
 
 static inline int thread_create(THREAD_HANDLE *t, void *(*f)(void *), void *arg)
 {
-    *t = CreateThread(NULL, 0, f, arg, 0, NULL);
+    *t = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)f, arg, 0, NULL);
     return 0;
 }
 

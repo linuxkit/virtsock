@@ -2,9 +2,15 @@
 *.obj
 *.sdf
 *.vcxproj.user
-/hvstress
 /.vs
 /x64
+/Debug
+/hvecho
+hvecho.*.db
+hvecho.*.opendb
+hvecho.vcxproj.filters
+
+/hvstress
 hvstress.*.db
 hvstress.*.opendb
 hvstress.vcxproj.filters

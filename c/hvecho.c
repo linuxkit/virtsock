@@ -6,12 +6,11 @@
  * This was primarily written to checkout shutdown(), which turns out
  * does not work.
  */
+#include "compat.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "compat.h"
 
 /* 3049197C-9A4E-4FBF-9367-97F792F16994 */
 DEFINE_GUID(MY_SERVICE_GUID,
