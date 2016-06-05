@@ -19,49 +19,6 @@ DEFINE_GUID(MY_SERVICE_GUID,
 #define MAX_BUF_LEN (2 * 1024 * 1024)
 
 
-/* Helper macros for parsing/printing GUIDs */
-#define GUID_FMT "%08x-%04hx-%04hx-%02x%02x-%02x%02x%02x%02x%02x%02x"
-#define GUID_ARGS(_g)                                               \
-    (_g).Data1, (_g).Data2, (_g).Data3,                             \
-    (_g).Data4[0], (_g).Data4[1], (_g).Data4[2], (_g).Data4[3],     \
-    (_g).Data4[4], (_g).Data4[5], (_g).Data4[6], (_g).Data4[7]
-#define GUID_SARGS(_g)                                              \
-    &(_g).Data1, &(_g).Data2, &(_g).Data3,                          \
-    &(_g).Data4[0], &(_g).Data4[1], &(_g).Data4[2], &(_g).Data4[3], \
-    &(_g).Data4[4], &(_g).Data4[5], &(_g).Data4[6], &(_g).Data4[7]
-
-
-int parseguid(const char *s, GUID *g)
-{
-    int res;
-    int p0, p1, p2, p3, p4, p5, p6, p7;
-
-    res = sscanf(s, GUID_FMT,
-                 &g->Data1, &g->Data2, &g->Data3,
-                 &p0, &p1, &p2, &p3, &p4, &p5, &p6, &p7);
-    if (res != 11)
-        return 1;
-    g->Data4[0] = p0;
-    g->Data4[1] = p1;
-    g->Data4[2] = p2;
-    g->Data4[3] = p3;
-    g->Data4[4] = p4;
-    g->Data4[5] = p5;
-    g->Data4[6] = p6;
-    g->Data4[7] = p7;
-    return 0;
-}
-
-/* Slightly different error handling between Windows and Linux */
-void sockerr(const char *msg)
-{
-#ifdef _MSC_VER
-    fprintf(stderr, "%s Error: %d\n", msg, WSAGetLastError());
-#else
-    fprintf(stderr, "%s Error: %d. %s", msg, errno, strerror(errno));
-#endif
-}
-
 #ifdef _MSC_VER
 static WSADATA wsaData;
 #endif
