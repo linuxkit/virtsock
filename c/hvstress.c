@@ -57,7 +57,7 @@ static void handle(SOCKET fd)
         sent = 0;
         while (sent < received) {
             res = send(fd, recvbuf + sent, received - sent, 0);
-            if (sent == SOCKET_ERROR) {
+            if (res == SOCKET_ERROR) {
                 sockerr("send()");
                 return;
             }
