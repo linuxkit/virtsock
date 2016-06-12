@@ -69,8 +69,7 @@ static void handle(SOCKET fd)
  */
 static int server(void)
 {
-    SOCKET lsock = INVALID_SOCKET;
-    SOCKET csock = INVALID_SOCKET;
+    SOCKET lsock, csock;
     SOCKADDR_HV sa, sac;
     socklen_t socklen = sizeof(sac);
     int res;
