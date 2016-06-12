@@ -19,12 +19,25 @@
 #else
 #include <errno.h>
 #include <stdint.h>
+#include <time.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #endif /* !_MSC_VER */
 
+#include <inttypes.h>
+
 #ifdef _MSC_VER
 typedef int socklen_t;
+
+typedef __int8 int8_t;
+typedef __int16 int16_t;
+typedef __int32 int32_t;
+typedef __int64 int64_t;
+
+typedef unsigned __int8 uint8_t;
+typedef unsigned __int16 uint16_t;
+typedef unsigned __int32 uint32_t;
+typedef unsigned __int64 uint64_t;
 #endif
 
 #ifndef _MSC_VER
@@ -120,6 +133,33 @@ static inline int thread_join(THREAD_HANDLE t)
 }
 #endif
 
+
+/* Time wrappers */
+#ifdef _MSC_VER
+static inline uint64_t time_ns(void)
+{
+    LARGE_INTEGER t, freq;
+
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&t);
+
+    t.QuadPart *= 1000000000;
+    return (uint64_t)t.QuadPart / freq.QuadPart;
+}
+#else
+static inline uint64_t time_ns(void)
+{
+    struct timespec ts;
+    int ret;
+
+    ret = clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+    if (ret)
+        return 0;
+
+    /* We don't really mind if this overflows...There are plenty of bits */
+    return (uint64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
+}
+#endif
 
 /*
  * Finally some common utility macros and functions
