@@ -55,8 +55,10 @@ func Listen(port uint) (net.Listener, error) {
 	sa.svm_port = C.uint(port)
 	sa.svm_cid = VSOCK_CID_ANY
 
-	if ret := C.bind_sockaddr_vm(C.int(accept_fd), &sa); ret != 0 {
-		return nil, errors.New(fmt.Sprintf("failed bind vsock connection to %08x.%08x, returned %d", sa.svm_cid, sa.svm_port, ret))
+	if ret, errno := C.bind_sockaddr_vm(C.int(accept_fd), &sa); ret != 0 {
+		return nil, errors.New(fmt.Sprintf(
+			"failed bind vsock connection to %08x.%08x, returned %d, errno %d: %s",
+			sa.svm_cid, sa.svm_port, ret, errno, errno))
 	}
 
 	err = syscall.Listen(accept_fd, syscall.SOMAXCONN)
