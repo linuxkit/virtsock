@@ -1,0 +1,42 @@
+# Windows Version: 10.0.14971.1000 (rs_prerelease.161111-1700)
+# CPU: Intel(R) Core(TM) i7-6560U CPU @ 2.20GHz
+# Memory: 15.85 GB
+# Linux Kernel Version: 4.8.10-moby
+# Linux Total Memory: 1.934 GiB
+# Linux CPUs: 2
+# Loopback mode
+8 29
+64 247
+128 536
+512 2033
+1024 3853
+1518 5692
+2048 7179
+4096 8803
+8192 10590
+16384 12207
+
+
+# Transmit from VM
+8 12
+64 99
+128 201
+512 664
+1024 897
+1518 1159
+2048 1294
+4096 1635
+8192 1437
+16384 1405
+
+
+# Transmit to VM
+8 19
+64 55
+128 126
+512 482
+1024 1843
+1518 2324
+2048 2328
+4096 2498
+8192 1517
