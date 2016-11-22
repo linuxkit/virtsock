@@ -49,6 +49,14 @@ static int verbose;
         }                                                               \
     } while (0)
 
+
+/* There's anecdotal evidence that a blocking send()/recv() is slower
+ * than performing non-blocking send()/recv() calls and then use
+ * epoll()/WSAPoll().  This flags switches between the two
+ */
+static int opt_poll;
+
+
 /* Bandwidth tests:
  *
  * The TX side sends a fixed amount of data in fixed sized
@@ -56,8 +64,14 @@ static int verbose;
  */
 static int bw_rx(SOCKET fd, int msg_sz)
 {
-    int ret;
+    struct pollfd pfd = { 0 };
     int rx_sz;
+    int ret;
+
+    if (opt_poll) {
+	pfd.fd = fd;
+	pfd.events = POLLIN;
+    }
 
     rx_sz = msg_sz ? msg_sz : ARRAY_SIZE(buf);
 
@@ -68,6 +82,11 @@ static int bw_rx(SOCKET fd, int msg_sz)
         if (ret == 0) {
             break;
         } else if (ret == SOCKET_ERROR) {
+            if (opt_poll && poll_check()) {
+                pfd.revents = 0;
+                poll(&pfd, 1, -1); /* XXX no error checking */
+                continue;
+            }
             sockerr("recv()");
             ret = -1;
             goto err_out;
@@ -82,11 +101,17 @@ err_out:
 
 static int bw_tx(SOCKET fd, int msg_sz, uint64_t *bw)
 {
+    struct pollfd pfd = { 0 };
     uint64_t total_sent = 0;
     uint64_t start, end, diff;
     int tx_sz;
     int sent;
     int ret;
+
+    if (opt_poll) {
+	pfd.fd = fd;
+	pfd.events = POLLOUT;
+    }
 
     tx_sz = msg_sz ? msg_sz : ARRAY_SIZE(buf);
 
@@ -99,6 +124,11 @@ static int bw_tx(SOCKET fd, int msg_sz, uint64_t *bw)
         while (sent < tx_sz) {
             ret = send(fd, buf + sent, tx_sz - sent, 0);
             if (ret == SOCKET_ERROR) {
+                if (opt_poll && poll_check()) {
+                    pfd.revents = 0;
+                    poll(&pfd, 1, -1);  /* XXX no error checking */
+                    continue;
+                }
                 sockerr("send()");
                 ret = -1;
                 goto err_out;
@@ -171,6 +201,10 @@ static int server(int bw, int msg_sz)
 
     INFO("server: accepted\n");
 
+    /* Switch to non-blocking if we want to poll */
+    if (opt_poll)
+        poll_enable(csock);
+
     if (bw)
         ret = bw_rx(csock, msg_sz);
 
@@ -210,6 +244,10 @@ static int client(GUID target, int bw, int msg_sz)
 
     INFO("client: connected\n");
 
+    /* Switch to non-blocking if we want to poll */
+    if (opt_poll)
+        poll_enable(fd);
+
     if (bw) {
         ret = bw_tx(fd, msg_sz, &res);
         if (ret)
@@ -233,6 +271,7 @@ void usage(char *name)
     printf(" -b        Bandwidth test\n");
     printf(" -l        Latency test\n");
     printf(" -m <sz>   Message size in bytes\n");
+    printf(" -p        Use poll instead of blocking send()/recv()\n");
     printf(" -v        Verbose output\n");
 }
 
@@ -289,6 +328,8 @@ int __cdecl main(int argc, char **argv)
                 goto out;
             }
             opt_msgsz = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-p") == 0) {
+            opt_poll = 1;
         } else if (strcmp(argv[i], "-v") == 0) {
             verbose++;
         } else {

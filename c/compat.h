@@ -16,8 +16,10 @@
 #pragma comment (lib, "Mswsock.lib")
 #pragma comment (lib, "AdvApi32.lib")
 
-#else
+#else /* !_MSC_VER */
 #include <errno.h>
+#include <fcntl.h>
+#include <poll.h>
 #include <stdint.h>
 #include <time.h>
 #include <unistd.h>
@@ -99,7 +101,7 @@ DEFINE_GUID(HV_GUID_LOOPBACK,
 DEFINE_GUID(HV_GUID_PARENT,
     0xa42e7cda, 0xd03f, 0x480c, 0x9c, 0xc2, 0xa4, 0xde, 0x20, 0xab, 0xb8, 0x78);
 
-#endif
+#endif /* !_MSC_VER */
 
 /* Thread wrappers */
 #ifdef _MSC_VER
@@ -208,3 +210,40 @@ static inline void sockerr(const char *msg)
     fprintf(stderr, "%s Error: %d. %s", msg, errno, strerror(errno));
 #endif
 }
+
+/* poll wrappers */
+
+/* Set socket to non-blocking */
+static inline int poll_enable(SOCKET s)
+{
+    int ret;
+#ifdef _MSC_VER
+    unsigned long mode = 1;
+    ret = ioctlsocket(s, FIONBIO, &mode);
+#else
+    int flags;
+    flags = fcntl(s, F_GETFL, 0);
+    if (flags < 0)
+        return flags;
+    ret = fcntl(s, F_SETFL, flags | O_NONBLOCK);
+#endif
+    return ret;
+}
+
+/* Return true if we should poll */
+static inline int poll_check()
+{
+#ifdef _MSC_VER
+    int err = WSAGetLastError();
+    return err == WSAEWOULDBLOCK || err == WSAEFAULT;
+#else
+    return errno == EWOULDBLOCK || errno == EAGAIN;
+#endif
+}
+
+#ifdef _MSC_VER
+static inline int poll(struct pollfd fds[], nfds_t nfds, int timeout)
+{
+    return WSAPoll(fds, nfds, timeout);
+}
+#endif
