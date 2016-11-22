@@ -28,17 +28,17 @@ set ytics 0,1024
 set mytics 2
 
 # Dell XPS
-set title "Dell XPS i7-6560U Build: ".xps_build.""
+set title "Dell XPS i7-6560U @ 2.2GHz Build: ".xps_build.""
 set output xps_out
-plot xps_4_4 index 0 w lp lw 3 t "Loopback", \
+plot xps_4_4 index 0 w lp lw 3 t "Host loopback", \
      ''      index 1 w lp lw 3 t "From VM (4.4.x)", \
      xps_4_8 index 1 w lp lw 3 t "From VM (4.8.x)", \
      ''      index 2 w lp lw 3 t "To VM (4.8.x)", \
 
 # NUC0
-set title "Intel NUC i7-5557U Build: ".nuc0_build.""
+set title "Intel NUC i7-5557U @ 3.1GHz Build: ".nuc0_build.""
 set output nuc0_out
-plot nuc0_4_4 index 0 w lp lw 3 t "Loopback", \
+plot nuc0_4_4 index 0 w lp lw 3 t "Host loopback", \
      ''       index 1 w lp lw 3 t "From VM (4.4.x)", \
      nuc0_4_8 index 1 w lp lw 3 t "From VM (4.8.x)", \
      ''       index 2 w lp lw 3 t "To VM (4.8.x)", \
