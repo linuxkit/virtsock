@@ -1,0 +1,10 @@
+FROM alpine:3.3
+
+RUN apk update && apk upgrade && apk add alpine-sdk util-linux-dev
+
+RUN mkdir -p /hvbench
+WORKDIR /hvbench
+
+COPY . /hvbench
+
+RUN make hvbench

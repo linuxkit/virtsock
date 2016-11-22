@@ -1,0 +1,49 @@
+
+# Data and output files
+xps_build = "14971"
+xps_4_4 = "dellxps-".xps_build."-4.4.30.dat"
+xps_4_8 = "dellxps-".xps_build."-4.8.10.dat"
+xps_out = "dellxps-".xps_build.".pdf"
+
+nuc0_build = "14393"
+nuc0_4_4 = "nuc0-".nuc0_build."-4.4.30.dat"
+nuc0_4_8 = "nuc0-".nuc0_build."-4.8.10.dat"
+nuc0_out = "nuc0-".nuc0_build.".pdf"
+
+
+set terminal pdf color enhanced solid
+
+set key top left
+set xlabel "Transfer Size (B)"
+set ylabel "Throughput (Mb/s)"
+
+set xrange [8:16384]
+set logscale x 2
+set xtics 2
+set mxtics 4
+set grid ytics mytics xtics mxtics
+
+set yrange [0:]
+set ytics 0,1024
+set mytics 2
+
+# Dell XPS
+set title "Dell XPS i7-6560U Build: ".xps_build.""
+set output xps_out
+plot xps_4_4 index 0 w lp lw 3 t "Loopback", \
+     ''      index 1 w lp lw 3 t "From VM (4.4.x)", \
+     xps_4_8 index 1 w lp lw 3 t "From VM (4.8.x)", \
+     ''      index 2 w lp lw 3 t "To VM (4.8.x)", \
+
+# NUC0
+set title "Intel NUC i7-5557U Build: ".nuc0_build.""
+set output nuc0_out
+plot nuc0_4_4 index 0 w lp lw 3 t "Loopback", \
+     ''       index 1 w lp lw 3 t "From VM (4.4.x)", \
+     nuc0_4_8 index 1 w lp lw 3 t "From VM (4.8.x)", \
+     ''       index 2 w lp lw 3 t "To VM (4.8.x)", \
+
+
+
+
+

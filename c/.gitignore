@@ -5,6 +5,12 @@
 /.vs
 /x64
 /Debug
+
+/hvbench
+hvbench.*.db
+hvbench.*.opendb
+hbench.vcxproj.filters
+
 /hvecho
 hvecho.*.db
 hvecho.*.opendb
@@ -14,3 +20,4 @@ hvecho.vcxproj.filters
 hvstress.*.db
 hvstress.*.opendb
 hvstress.vcxproj.filters
+

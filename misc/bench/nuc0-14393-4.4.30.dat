@@ -1,0 +1,31 @@
+# Windows Version: 10.0.14393.206 (rs1_release.160915-0644)
+# CPU: Intel(R) Core(TM) i7-5557U CPU @ 3.10GHz
+# Memory: 15.89 GB
+# Linux Kernel Version: 4.4.30-moby
+# Linux Total Memory: 1.918 GiB
+# Linux CPUs: 2
+# Loopback mode
+8 22
+64 190
+128 401
+512 1637
+1024 3211
+1518 4822
+2048 6220
+4096 10453
+8192 12387
+16384 12769
+
+
+# Transmit from VM
+8 36
+64 238
+128 496
+512 476
+1024 577
+1518 942
+2048 662
+4096 1279
+8192 1294
+16384 852
+# Transmit to VM skipped to Linux kernel Kernel Version: 4.4.30-moby

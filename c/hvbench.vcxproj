@@ -104,7 +104,7 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="hvstress.c" />
+    <ClCompile Include="hvbench.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="compat.h" />
