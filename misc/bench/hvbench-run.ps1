@@ -1,6 +1,6 @@
 #$MsgSzs = 1024, 2048
 # 1518 and 9018 are Ethernet frame sizes for standard MTU and Jumbo frames
-$MsgSzs = 8, 64, 128, 512, 1024, 1518, 2048, 4096, 8192, 9018, 12288, 16384
+$MsgSzs = 8, 64, 128, 512, 1024, 1518, 2048, 3072, 4096, 5120, 8192, 9018, 12288, 16384
 
 # collect some info
 $winver = (Get-ItemProperty -Path c:\windows\system32\hal.dll).VersionInfo.FileVersion
