@@ -242,7 +242,7 @@ static inline int poll_check()
 }
 
 #ifdef _MSC_VER
-static inline int poll(struct pollfd fds[], nfds_t nfds, int timeout)
+static inline int poll(struct pollfd fds[], unsigned long nfds, int timeout)
 {
     return WSAPoll(fds, nfds, timeout);
 }
