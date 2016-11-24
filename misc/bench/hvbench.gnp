@@ -30,24 +30,24 @@ set mytics 2
 # Dell XPS
 set title "Dell XPS i7-6560U @ 2.2GHz Build: ".xps_build.""
 set output xps_out
-plot xps_4_8 index 0 w lp lw 3 t "Host loopback (block)", \
-     ''      index 1 w lp lw 3 t "Host loopback (poll)", \
+plot xps_4_8 index 2 w lp lw 3 t "Host loopback (block)", \
+     ''      index 3 w lp lw 3 t "Host loopback (poll)", \
      xps_4_4 index 1 w lp lw 3 t "From VM (4.4.x, block)", \
-     xps_4_8 index 2 w lp lw 3 t "From VM (4.8.x, block)", \
-     ''      index 3 w lp lw 3 t "From VM (4.8.x, poll)", \
-     ''      index 4 w lp lw 3 t "To VM (4.8.x, block)", \
-     ''      index 5 w lp lw 3 t "To VM (4.8.x, poll)"
+     xps_4_8 index 4 w lp lw 3 t "From VM (4.8.x, block)", \
+     ''      index 5 w lp lw 3 t "From VM (4.8.x, poll)", \
+     ''      index 6 w lp lw 3 t "To VM (4.8.x, block)", \
+     ''      index 7 w lp lw 3 t "To VM (4.8.x, poll)"
 
 # NUC0
 set title "Intel NUC i7-5557U @ 3.1GHz Build: ".nuc0_build.""
 set output nuc0_out
-plot nuc0_4_8 index 0 w lp lw 3 t "Host loopback (block)", \
-     ''       index 1 w lp lw 3 t "Host loopback (poll)", \
+plot nuc0_4_8 index 2 w lp lw 3 t "Host loopback (block)", \
+     ''       index 3 w lp lw 3 t "Host loopback (poll)", \
      nuc0_4_4 index 1 w lp lw 3 t "From VM (4.4.x, block)", \
-     nuc0_4_8 index 2 w lp lw 3 t "From VM (4.8.x, block)", \
-     ''       index 3 w lp lw 3 t "From VM (4.8.x, poll)", \
-     ''       index 4 w lp lw 3 t "To VM (4.8.x, block)", \
-     ''       index 5 w lp lw 3 t "To VM (4.8.x, poll)"
+     nuc0_4_8 index 4 w lp lw 3 t "From VM (4.8.x, block)", \
+     ''       index 5 w lp lw 3 t "From VM (4.8.x, poll)", \
+     ''       index 6 w lp lw 3 t "To VM (4.8.x, block)", \
+     ''       index 7 w lp lw 3 t "To VM (4.8.x, poll)"
 
 
 

@@ -18,7 +18,6 @@ Write-Output "# Linux $linver"
 Write-Output "# Linux $vmmem"
 Write-Output "# Linux $vmcpus"
 Write-Output "#"
-Write-Output "# BW: Message sizes (in Bytes) vs Bandwidth (in Mb/s)"
 
 # get current path as something  we can use inside the VM
 $CurDir = (& 'C:\Program Files\Git\usr\bin\cygpath.exe' $pwd)
@@ -36,21 +35,42 @@ $errout = ".\hvbench.err.txt"
 # Tests below here
 #
 
+# Connections tests
+Write-Output "# connect() from VM"
+# Start the server on the host and give it time to start
+Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -C" -RedirectStandardError $errout
+Start-Sleep -s 2
+docker run --rm --privileged --pid=host justincormack/nsenter1 /hvbench -c parent -C
+
+Write-Output ""
+Write-Output ""
+Write-Output "# connect() to VM"
+# Start the server in the VM detached
+$svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -C
+Start-Sleep -s 2
+.\hvbench.exe -c $VMId -C
+docker kill $svrid 2> $null
+
+
+# Bandwidth tests
+Write-Output ""
+Write-Output ""
+Write-Output "# BW: Message sizes (in Bytes) vs Bandwidth (in Mb/s)"
 Write-Output "# BW: Host loopback mode blocking"
 foreach ($MsgSz in $MsgSzs) {
     # Start the server on the host and give it time to start
-    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -b"  -RedirectStandardError $errout 
+    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B"  -RedirectStandardError $errout
     Start-Sleep -s 2
-    .\hvbench.exe -c loopback -b -m $MsgSz
+    .\hvbench.exe -c loopback -B -m $MsgSz
 }
 Write-Output ""
 Write-Output ""
 Write-Output "# BW: Host loopback mode poll()"
 foreach ($MsgSz in $MsgSzs) {
     # Start the server on the host and give it time to start
-    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -b -p"  -RedirectStandardError $errout
+    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B -p"  -RedirectStandardError $errout
     Start-Sleep -s 2
-    .\hvbench.exe -c loopback -b -p -m $MsgSz
+    .\hvbench.exe -c loopback -B -p -m $MsgSz
 }
 
 Write-Output ""
@@ -58,9 +78,9 @@ Write-Output ""
 Write-Output "# BW: Transmit from VM blocking"
 foreach ($MsgSz in $MsgSzs) {
     # Start the server on the host and give it time to start
-    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -b" -RedirectStandardError $errout 
+    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B" -RedirectStandardError $errout
     Start-Sleep -s 2
-    docker run --rm --privileged --pid=host justincormack/nsenter1 /hvbench -c parent -b -m $MsgSz
+    docker run --rm --privileged --pid=host justincormack/nsenter1 /hvbench -c parent -B -m $MsgSz
 }
 
 Write-Output ""
@@ -68,9 +88,9 @@ Write-Output ""
 Write-Output "# BW: Transmit from VM poll()"
 foreach ($MsgSz in $MsgSzs) {
     # Start the server on the host and give it time to start
-    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -b -p" -RedirectStandardError $errout
+    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B -p" -RedirectStandardError $errout
     Start-Sleep -s 2
-    docker run --rm --privileged --pid=host justincormack/nsenter1 /hvbench -c parent -b -p -m $MsgSz
+    docker run --rm --privileged --pid=host justincormack/nsenter1 /hvbench -c parent -B -p -m $MsgSz
 }
 
 if ($linver.ToString() -match "4.4") {
@@ -84,9 +104,9 @@ Write-Output ""
 Write-Output "# BW: Transmit to VM blocking"
 foreach ($MsgSz in $MsgSzs) {
     # Start the server in the VM detached
-    $svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -b
+    $svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -B
     Start-Sleep -s 2
-    .\hvbench.exe -c $VMId -b -m $MsgSz
+    .\hvbench.exe -c $VMId -B -m $MsgSz
     docker kill $svrid 2> $null
 }
 
@@ -95,8 +115,8 @@ Write-Output ""
 Write-Output "# BW: Transmit to VM poll()"
 foreach ($MsgSz in $MsgSzs) {
     # Start the server in the VM detached
-    $svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -b -p
+    $svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -B -p
     Start-Sleep -s 2
-    .\hvbench.exe -c $VMId -b -p -m $MsgSz
+    .\hvbench.exe -c $VMId -B -p -m $MsgSz
     docker kill $svrid 2> $null
 }
