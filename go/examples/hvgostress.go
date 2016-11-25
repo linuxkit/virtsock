@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"hash"
 	"io"
 	"log"
 	"net"
@@ -154,6 +155,21 @@ func parClient(wg *sync.WaitGroup, cl Client) {
 	wg.Done()
 }
 
+func md5Hash(h hash.Hash) [16]byte {
+	if h.Size() != md5.Size {
+		log.Fatalln("Hash is not an md5!")
+	}
+	s := h.Sum(nil) // Gets a slice
+
+	var r [16]byte
+
+	for i, b := range s {
+		r[i] = b
+	}
+	return r
+
+}
+
 func client(cl Client, conid int) {
 	c, err := cl.Dial(conid)
 	if c == nil {
@@ -170,12 +186,11 @@ func client(cl Client, conid int) {
 		buflen += rand.Intn(maxDataLen - minDataLen + 1)
 	}
 	txbuf := randBuf(buflen)
-	csum0 := md5.Sum(txbuf)
-
-	prDebug("[%05d] TX: %d bytes, md5=%02x\n", conid, buflen, csum0)
+	hash0 := md5.New()
 
 	w := make(chan int)
 	go func() {
+		hash0.Write(txbuf)
 		l, err := c.Write(txbuf)
 		if err != nil {
 			prError("[%05d] Failed to send: %s\n", conid, err)
@@ -198,10 +213,15 @@ func client(cl Client, conid int) {
 		prError("[%05d] Failed to receive: %s\n", conid, err)
 		return
 	}
-	csum1 := md5.Sum(rxbuf)
+	hash1 := md5.New()
+	hash1.Write(rxbuf)
 
 	totalSent := <-w
 
+	csum0 := md5Hash(hash0)
+	prDebug("[%05d] TX: %d bytes, md5=%02x\n", conid, totalSent, csum0)
+
+	csum1 := md5Hash(hash1)
 	prInfo("[%05d] RX: %d bytes, md5=%02x (sent=%d)\n", conid, n, csum1, totalSent)
 	if csum0 != csum1 {
 		prError("[%05d] Checksums don't match", conid)
