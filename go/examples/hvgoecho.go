@@ -7,28 +7,33 @@ import (
 	"io"
 	"log"
 	"net"
-	"strings"
-
-	"../hvsock"
 )
 
 var (
 	clientStr  string
 	serverMode bool
-
-	svcid, _ = hvsock.GuidFromString("3049197C-9A4E-4FBF-9367-97F792F16994")
+	verbose    int
 )
+
+type Conn interface {
+	net.Conn
+	CloseRead() error
+	CloseWrite() error
+}
+
+type Client interface {
+	String() string
+	Dial(conid int) (Conn, error)
+}
 
 func init() {
 	flag.StringVar(&clientStr, "c", "", "Client")
 	flag.BoolVar(&serverMode, "s", false, "Start as a Server")
+	flag.IntVar(&verbose, "v", 0, "Set the verbosity level")
 }
 
 func server() {
-	l, err := hvsock.Listen(hvsock.HypervAddr{VmId: hvsock.GUID_WILDCARD, ServiceId: svcid})
-	if err != nil {
-		log.Fatalln("Listen():", err)
-	}
+	l := ServerListen()
 	defer func() {
 		l.Close()
 	}()
@@ -68,11 +73,10 @@ func handleRequest(c net.Conn) {
 	fmt.Printf("Sent bye\n")
 }
 
-func client(vmid hvsock.GUID) {
-	sa := hvsock.HypervAddr{VmId: vmid, ServiceId: svcid}
-	c, err := hvsock.Dial(sa)
+func client(cl Client) {
+	c, err := cl.Dial(0)
 	if err != nil {
-		log.Fatalln("Failed to Dial:\n", sa.VmId.String(), sa.ServiceId.String(), err)
+		log.Fatalln("Failed to Dial:\n", cl.String(), err)
 	}
 
 	defer func() {
@@ -109,23 +113,15 @@ func main() {
 	log.SetFlags(log.LstdFlags)
 	flag.Parse()
 
+	ValidateOptions()
+
 	if serverMode {
 		fmt.Printf("Starting server\n")
 		server()
 	}
 
-	vmid := hvsock.GUID_ZERO
-	var err error
-	if strings.Contains(clientStr, "-") {
-		vmid, err = hvsock.GuidFromString(clientStr)
-		if err != nil {
-			log.Fatalln("Can't parse GUID: ", clientStr)
-		}
-	} else if clientStr == "parent" {
-		vmid = hvsock.GUID_PARENT
-	} else {
-		vmid = hvsock.GUID_LOOPBACK
-	}
-	fmt.Printf("Client connecting to %s", vmid.String())
-	client(vmid)
+	cl := ParseClientStr(clientStr)
+
+	fmt.Printf("Client connecting to %s", cl.String())
+	client(cl)
 }

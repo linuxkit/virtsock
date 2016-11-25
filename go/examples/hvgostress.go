@@ -7,15 +7,12 @@ import (
 	"io"
 	"log"
 	"net"
-	"strings"
 	"sync"
 	"time"
 
 	"crypto/md5"
 	"math/rand"
 	"sync/atomic"
-
-	"../hvsock"
 )
 
 var (
@@ -27,10 +24,20 @@ var (
 	verbose     int
 	exitOnError bool
 	parallel    int
-	svcid, _    = hvsock.GuidFromString("3049197C-9A4E-4FBF-9367-97F792F16994")
 
 	connCounter int32
 )
+
+type Conn interface {
+	net.Conn
+	CloseRead() error
+	CloseWrite() error
+}
+
+type Client interface {
+	String() string
+	Dial(conid int) (Conn, error)
+}
 
 func init() {
 	flag.StringVar(&clientStr, "c", "", "Client")
@@ -49,9 +56,8 @@ func main() {
 	log.SetFlags(log.LstdFlags)
 	flag.Parse()
 
-	if verbose > 2 {
-		hvsock.Debug = true
-	}
+	SetVerbosity()
+	ValidateOptions()
 
 	if serverMode {
 		fmt.Printf("Starting server\n")
@@ -59,25 +65,13 @@ func main() {
 		return
 	}
 
-	// Client mode
-	vmid := hvsock.GUID_ZERO
-	var err error
-	if strings.Contains(clientStr, "-") {
-		vmid, err = hvsock.GuidFromString(clientStr)
-		if err != nil {
-			log.Fatalln("Can't parse GUID: ", clientStr)
-		}
-	} else if clientStr == "parent" {
-		vmid = hvsock.GUID_PARENT
-	} else {
-		vmid = hvsock.GUID_LOOPBACK
-	}
+	cl := ParseClientStr(clientStr)
 
 	if parallel <= 1 {
 		// No parallelism, run in the main thread.
-		fmt.Printf("Client connecting to %s\n", vmid.String())
+		fmt.Printf("Client connecting to %s\n", cl.String())
 		for i := 0; i < connections; i++ {
-			client(vmid, i)
+			client(cl, i)
 			time.Sleep(time.Duration(sleepTime) * time.Second)
 		}
 		return
@@ -87,16 +81,13 @@ func main() {
 	var wg sync.WaitGroup
 	for i := 0; i < parallel; i++ {
 		wg.Add(1)
-		go parClient(&wg, vmid)
+		go parClient(&wg, cl)
 	}
 	wg.Wait()
 }
 
 func server() {
-	l, err := hvsock.Listen(hvsock.HypervAddr{VmId: hvsock.GUID_WILDCARD, ServiceId: svcid})
-	if err != nil {
-		log.Fatalln("Listen():", err)
-	}
+	l := ServerListen()
 	defer func() {
 		l.Close()
 	}()
@@ -146,10 +137,10 @@ func handleRequest(c net.Conn, connid int) {
 	prDebug("[%05d] Sent bye\n", connid)
 }
 
-func parClient(wg *sync.WaitGroup, vmid hvsock.GUID) {
+func parClient(wg *sync.WaitGroup, cl Client) {
 	connid := int(atomic.AddInt32(&connCounter, 1))
 	for connid < connections {
-		client(vmid, connid)
+		client(cl, connid)
 		connid = int(atomic.AddInt32(&connCounter, 1))
 		time.Sleep(time.Duration(sleepTime) * time.Second)
 	}
@@ -157,11 +148,11 @@ func parClient(wg *sync.WaitGroup, vmid hvsock.GUID) {
 	wg.Done()
 }
 
-func client(vmid hvsock.GUID, conid int) {
-	sa := hvsock.HypervAddr{VmId: vmid, ServiceId: svcid}
-	c, err := hvsock.Dial(sa)
-	if err != nil {
-		prError("[%05d] Failed to Dial: %s:%s %s\n", conid, sa.VmId.String(), sa.ServiceId.String(), err)
+func client(cl Client, conid int) {
+	c, err := cl.Dial(conid)
+	if c == nil {
+		prError("[%05d] Failed to Dial: %s %s\n", conid, cl, err)
+		return
 	}
 
 	defer c.Close()
