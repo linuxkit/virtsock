@@ -19,6 +19,7 @@ var (
 	clientStr   string
 	serverMode  bool
 	maxDataLen  int
+	minDataLen  int
 	connections int
 	sleepTime   int
 	verbose     int
@@ -42,6 +43,7 @@ type Client interface {
 func init() {
 	flag.StringVar(&clientStr, "c", "", "Client")
 	flag.BoolVar(&serverMode, "s", false, "Start as a Server")
+	flag.IntVar(&minDataLen, "L", 0, "Minimum Length of data")
 	flag.IntVar(&maxDataLen, "l", 64*1024, "Maximum Length of data")
 	flag.IntVar(&connections, "i", 100, "Total number of connections")
 	flag.IntVar(&sleepTime, "w", 0, "Sleep time in seconds between new connections")
@@ -65,6 +67,10 @@ func main() {
 		return
 	}
 
+	if minDataLen > maxDataLen {
+		fmt.Printf("minDataLen > maxDataLen!")
+		return
+	}
 	cl := ParseClientStr(clientStr)
 
 	if parallel <= 1 {
@@ -159,7 +165,10 @@ func client(cl Client, conid int) {
 
 	// Create buffer with random data and random length.
 	// Make sure the buffer is not zero-length
-	buflen := rand.Intn(maxDataLen-1) + 1
+	buflen := minDataLen
+	if maxDataLen > minDataLen {
+		buflen += rand.Intn(maxDataLen - minDataLen + 1)
+	}
 	txbuf := randBuf(buflen)
 	csum0 := md5.Sum(txbuf)
 
