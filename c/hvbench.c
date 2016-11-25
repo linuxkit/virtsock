@@ -282,12 +282,14 @@ err_out:
 }
 
 /* Different client for connection tests */
+#define BM_CONN_TIMEOUT 500 /* 500ms */
 static int client_conn(GUID target)
 {
     uint64_t start, end, diff;
     int histogram[3 * 9 + 3];
     SOCKADDR_HV sa;
     SOCKET fd;
+    int sum;
     int ret;
     int i;
 
@@ -311,7 +313,12 @@ static int client_conn(GUID target)
 
         start = time_ns();
 
-        ret = connect(fd, (const struct sockaddr *)&sa, sizeof(sa));
+        if (opt_poll)
+            ret = connect_ex(fd, (const struct sockaddr *)&sa, sizeof(sa),
+                             BM_CONN_TIMEOUT);
+        else
+            ret = connect(fd, (const struct sockaddr *)&sa, sizeof(sa));
+
         if (ret == SOCKET_ERROR) {
             histogram[ARRAY_SIZE(histogram) - 2] += 1;
             DBG("conn: %d -> connect error\n", i);
@@ -335,20 +342,28 @@ static int client_conn(GUID target)
     }
 
     /* Print the results */
-    printf("# time (ms) vs count\n");
+    printf("# time (ms) vs count vs cumulative percent\n");
+    sum = 0;
     for (i = 0; i < ARRAY_SIZE(histogram); i++) {
+        sum += histogram[i];
         if (i < 9)
-            printf("%d %d\n", i + 1, histogram[i]);
+            printf("%d %d %6.2f\n", i + 1, histogram[i],
+                   sum * 100.0 / BM_CONNS);
         else if (i < 18)
-            printf("%d %d\n", (i - 9 + 1) * 10, histogram[i]);
+            printf("%d %d %6.2f\n", (i - 9 + 1) * 10, histogram[i],
+                   sum * 100.0 / BM_CONNS);
         else if (i < 27)
-            printf("%d %d\n", (i - 18 + 1) * 100, histogram[i]);
+            printf("%d %d %6.2f\n", (i - 18 + 1) * 100, histogram[i],
+                   sum * 100.0 / BM_CONNS);
         else if (i == ARRAY_SIZE(histogram) - 3)
-            printf(">=%d %d\n", (i - 27 + 1) * 1000, histogram[i]);
+            printf(">=%d %d %6.2f\n", (i - 27 + 1) * 1000, histogram[i],
+                   sum * 100.0 / BM_CONNS);
         else if (i == ARRAY_SIZE(histogram) - 2)
-            printf("connect_err %d\n", histogram[i]);
+            printf("connect_err %d %6.2f\n", histogram[i],
+                   sum * 100.0 / BM_CONNS);
         else
-            printf("socket_err %d\n", histogram[i]);
+            printf("socket_err %d %6.2f\n", histogram[i],
+                   sum * 100.0 / BM_CONNS);
     }
 
     return 0;
