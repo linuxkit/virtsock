@@ -21,6 +21,8 @@ var (
 	serverMode  bool
 	maxDataLen  int
 	minDataLen  int
+	minBufLen   int
+	maxBufLen   int
 	connections int
 	sleepTime   int
 	verbose     int
@@ -46,6 +48,8 @@ func init() {
 	flag.BoolVar(&serverMode, "s", false, "Start as a Server")
 	flag.IntVar(&minDataLen, "L", 0, "Minimum Length of data")
 	flag.IntVar(&maxDataLen, "l", 64*1024, "Maximum Length of data")
+	flag.IntVar(&minBufLen, "B", 16*1024, "Minimum Buffer size")
+	flag.IntVar(&maxBufLen, "b", 16*1024, "Maximum Buffer size")
 	flag.IntVar(&connections, "i", 100, "Total number of connections")
 	flag.IntVar(&sleepTime, "w", 0, "Sleep time in seconds between new connections")
 	flag.IntVar(&parallel, "p", 1, "Run n connections in parallel")
@@ -72,6 +76,11 @@ func main() {
 		fmt.Printf("minDataLen > maxDataLen!")
 		return
 	}
+	if minBufLen > maxBufLen {
+		fmt.Printf("minBuflen > maxBufLen!")
+		return
+	}
+
 	cl := ParseClientStr(clientStr)
 
 	if parallel <= 1 {
@@ -185,24 +194,44 @@ func client(cl Client, conid int) {
 	if maxDataLen > minDataLen {
 		buflen += rand.Intn(maxDataLen - minDataLen + 1)
 	}
-	txbuf := randBuf(buflen)
 	hash0 := md5.New()
 
 	w := make(chan int)
 	go func() {
-		hash0.Write(txbuf)
-		l, err := c.Write(txbuf)
-		if err != nil {
-			prError("[%05d] Failed to send: %s\n", conid, err)
-		}
-		if l != buflen {
-			prError("[%05d] Failed to send enough data: %d\n", conid, l)
+		total := 0
+		remaining := buflen
+		for remaining > 0 {
+			batch := 0
+			bufsize := minBufLen
+			if maxBufLen > minBufLen {
+				bufsize += rand.Intn(maxBufLen - minBufLen + 1)
+			}
+			if remaining > bufsize {
+				batch = bufsize
+			} else {
+				batch = remaining
+			}
+
+			txbuf := randBuf(batch)
+			hash0.Write(txbuf)
+
+			l, err := c.Write(txbuf)
+			if err != nil {
+				prError("[%05d] Failed to send: %s\n", conid, err)
+				break
+			}
+			if l != batch {
+				prError("[%05d] Failed to send enough data: %d\n", conid, l)
+				break
+			}
+			total += l
+			remaining -= l
 		}
 
 		// Tell the other end that we are done
 		c.CloseWrite()
 
-		w <- l
+		w <- total
 	}()
 
 	rxbuf := make([]byte, buflen)
