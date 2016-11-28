@@ -234,16 +234,38 @@ func client(cl Client, conid int) {
 		w <- total
 	}()
 
-	rxbuf := make([]byte, buflen)
-
-	reader := bufio.NewReader(c)
-	n, err := io.ReadFull(reader, rxbuf)
-	if err != nil {
-		prError("[%05d] Failed to receive: %s\n", conid, err)
-		return
-	}
 	hash1 := md5.New()
-	hash1.Write(rxbuf)
+
+	totalReceived := 0
+	remaining := buflen
+	for remaining > 0 {
+		batch := 0
+		bufsize := minBufLen
+		if maxBufLen > minBufLen {
+			bufsize += rand.Intn(maxBufLen - minBufLen + 1)
+		}
+		if remaining > bufsize {
+			batch = bufsize
+		} else {
+			batch = remaining
+		}
+
+		rxbuf := make([]byte, batch)
+
+		l, err := io.ReadFull(c, rxbuf)
+		if err != nil {
+			prError("[%05d] Failed to receive: %s\n", conid, err)
+			break
+		}
+		if l != batch {
+			prError("[%05d] Failed to receive enough data: %d\n", conid, l)
+			break
+		}
+
+		hash1.Write(rxbuf)
+		remaining -= l
+		totalReceived += l
+	}
 
 	totalSent := <-w
 
@@ -251,13 +273,13 @@ func client(cl Client, conid int) {
 	prDebug("[%05d] TX: %d bytes, md5=%02x\n", conid, totalSent, csum0)
 
 	csum1 := md5Hash(hash1)
-	prInfo("[%05d] RX: %d bytes, md5=%02x (sent=%d)\n", conid, n, csum1, totalSent)
+	prInfo("[%05d] RX: %d bytes, md5=%02x (sent=%d)\n", conid, totalReceived, csum1, totalSent)
 	if csum0 != csum1 {
 		prError("[%05d] Checksums don't match", conid)
 	}
 
 	// Wait for Bye message
-	message, err := reader.ReadString('\n')
+	message, err := bufio.NewReader(c).ReadString('\n')
 	if err != nil {
 		prError("[%05d] Failed to receive bye: %s\n", conid, err)
 	}
