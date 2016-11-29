@@ -1,6 +1,7 @@
 #$MsgSzs = 1024, 2048
 # 1518 and 9018 are Ethernet frame sizes for standard MTU and Jumbo frames
 $MsgSzs = 8, 64, 128, 512, 1024, 1518, 2048, 3072, 4096, 5120, 8192, 9018, 12288, 16384
+$idx = 0
 
 # collect some info
 $winver = (Get-ItemProperty -Path c:\windows\system32\hal.dll).VersionInfo.FileVersion
@@ -32,11 +33,10 @@ docker run --rm -ti --privileged --pid=host justincormack/nsenter1 /bin/cp $CurD
 $errout = ".\hvbench.err.txt"
 
 #
-# Tests below here
-#
-
 # Connections tests
-Write-Output "# connect() from VM"
+#
+Write-Output "# Index $idx: connect() from VM"
+$idx++
 # Start the server on the host and give it time to start
 Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -C" -RedirectStandardError $errout
 Start-Sleep -s 2
@@ -44,19 +44,60 @@ docker run --rm --privileged --pid=host justincormack/nsenter1 /hvbench -c paren
 
 Write-Output ""
 Write-Output ""
-Write-Output "# connect() to VM"
+Write-Output "# Index $idx: connect() to VM"
+$idx++
+# Start the server in the VM detached
+$svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -C
+Start-Sleep -s 2
+.\hvbench.exe -c $VMId -C
+docker kill $svrid 2> $null
+Write-Output ""
+Write-Output ""
+Write-Output "# Index $idx: connect() to VM with timeout"
+$idx++
+# Start the server in the VM detached
+$svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -C
+Start-Sleep -s 2
+.\hvbench.exe -c $VMId -C -p
+docker kill $svrid 2> $null
+
+# create background load
+start-job -scriptblock { while($true){} }
+start-job -scriptblock { while($true){} }
+start-job -scriptblock { while($true){} }
+start-job -scriptblock { while($true){} }
+start-job -scriptblock { while($true){} }
+start-job -scriptblock { while($true){} }
+
+Write-Output ""
+Write-Output ""
+Write-Output "# Index $idx: connect() from VM with load"
+$idx++
+# Start the server on the host and give it time to start
+Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -C" -RedirectStandardError $errout
+Start-Sleep -s 2
+docker run --rm --privileged --pid=host justincormack/nsenter1 /hvbench -c parent -C
+Write-Output ""
+Write-Output ""
+Write-Output "# Index $idx: connect() to VM with load"
+$idx++
 # Start the server in the VM detached
 $svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -C
 Start-Sleep -s 2
 .\hvbench.exe -c $VMId -C
 docker kill $svrid 2> $null
 
+# Kill background jobs
+get-job | remove-job -force
 
+#
 # Bandwidth tests
+#
 Write-Output ""
 Write-Output ""
 Write-Output "# BW: Message sizes (in Bytes) vs Bandwidth (in Mb/s)"
-Write-Output "# BW: Host loopback mode blocking"
+Write-Output "# Index $idx: BW: Host loopback mode blocking"
+$idx++
 foreach ($MsgSz in $MsgSzs) {
     # Start the server on the host and give it time to start
     Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B"  -RedirectStandardError $errout
@@ -65,7 +106,28 @@ foreach ($MsgSz in $MsgSzs) {
 }
 Write-Output ""
 Write-Output ""
-Write-Output "# BW: Host loopback mode poll()"
+Write-Output "# Index $idx: BW: Host loopback mode poll() server"
+$idx++
+foreach ($MsgSz in $MsgSzs) {
+    # Start the server on the host and give it time to start
+    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B -p"  -RedirectStandardError $errout
+    Start-Sleep -s 2
+    .\hvbench.exe -c loopback -B -m $MsgSz
+}
+Write-Output ""
+Write-Output ""
+Write-Output "# Index $idx: BW: Host loopback mode poll() client"
+$idx++
+foreach ($MsgSz in $MsgSzs) {
+    # Start the server on the host and give it time to start
+    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B"  -RedirectStandardError $errout
+    Start-Sleep -s 2
+    .\hvbench.exe -c loopback -B -p -m $MsgSz
+}
+Write-Output ""
+Write-Output ""
+Write-Output "# Index $idx: BW: Host loopback mode poll() both"
+$idx++
 foreach ($MsgSz in $MsgSzs) {
     # Start the server on the host and give it time to start
     Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B -p"  -RedirectStandardError $errout
@@ -75,17 +137,38 @@ foreach ($MsgSz in $MsgSzs) {
 
 Write-Output ""
 Write-Output ""
-Write-Output "# BW: Transmit from VM blocking"
+Write-Output "# Index $idx: BW: Transmit from VM blocking"
+$idx++
 foreach ($MsgSz in $MsgSzs) {
     # Start the server on the host and give it time to start
     Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B" -RedirectStandardError $errout
     Start-Sleep -s 2
     docker run --rm --privileged --pid=host justincormack/nsenter1 /hvbench -c parent -B -m $MsgSz
 }
-
 Write-Output ""
 Write-Output ""
-Write-Output "# BW: Transmit from VM poll()"
+Write-Output "# Index $idx: BW: Transmit from VM poll() Linux"
+$idx++
+foreach ($MsgSz in $MsgSzs) {
+    # Start the server on the host and give it time to start
+    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B" -RedirectStandardError $errout
+    Start-Sleep -s 2
+    docker run --rm --privileged --pid=host justincormack/nsenter1 /hvbench -c parent -B -p -m $MsgSz
+}
+Write-Output ""
+Write-Output ""
+Write-Output "# Index $idx: BW: Transmit from VM poll() Windows"
+$idx++
+foreach ($MsgSz in $MsgSzs) {
+    # Start the server on the host and give it time to start
+    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B -p" -RedirectStandardError $errout
+    Start-Sleep -s 2
+    docker run --rm --privileged --pid=host justincormack/nsenter1 /hvbench -c parent -B -m $MsgSz
+}
+Write-Output ""
+Write-Output ""
+Write-Output "# Index $idx: BW: Transmit from VM poll() both"
+$idx++
 foreach ($MsgSz in $MsgSzs) {
     # Start the server on the host and give it time to start
     Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B -p" -RedirectStandardError $errout
@@ -101,7 +184,8 @@ if ($linver.ToString() -match "4.4") {
 # We only have 4.4 or later. For later kernels run the other direction to
 Write-Output ""
 Write-Output ""
-Write-Output "# BW: Transmit to VM blocking"
+Write-Output "# Index $idx: BW: Transmit to VM blocking"
+$idx++
 foreach ($MsgSz in $MsgSzs) {
     # Start the server in the VM detached
     $svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -B
@@ -109,10 +193,32 @@ foreach ($MsgSz in $MsgSzs) {
     .\hvbench.exe -c $VMId -B -m $MsgSz
     docker kill $svrid 2> $null
 }
-
 Write-Output ""
 Write-Output ""
-Write-Output "# BW: Transmit to VM poll()"
+Write-Output "# Index $idx: BW: Transmit to VM poll() Linux"
+$idx++
+foreach ($MsgSz in $MsgSzs) {
+    # Start the server in the VM detached
+    $svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -B -p
+    Start-Sleep -s 2
+    .\hvbench.exe -c $VMId -B -m $MsgSz
+    docker kill $svrid 2> $null
+}
+Write-Output ""
+Write-Output ""
+Write-Output "# Index $idx: BW: Transmit to VM poll() Windows"
+$idx++
+foreach ($MsgSz in $MsgSzs) {
+    # Start the server in the VM detached
+    $svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -B
+    Start-Sleep -s 2
+    .\hvbench.exe -c $VMId -B -p -m $MsgSz
+    docker kill $svrid 2> $null
+}
+Write-Output ""
+Write-Output ""
+Write-Output "# Index $idx: BW: Transmit to VM poll()"
+$idx++
 foreach ($MsgSz in $MsgSzs) {
     # Start the server in the VM detached
     $svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -B -p
