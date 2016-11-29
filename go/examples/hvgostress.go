@@ -183,7 +183,8 @@ func client(cl Client, conid int) {
 
 	rxbuf := make([]byte, buflen)
 
-	n, err := io.ReadFull(bufio.NewReader(c), rxbuf)
+	reader := bufio.NewReader(c)
+	n, err := io.ReadFull(reader, rxbuf)
 	if err != nil {
 		prError("[%05d] Failed to receive: %s\n", conid, err)
 		return
@@ -198,7 +199,7 @@ func client(cl Client, conid int) {
 	}
 
 	// Wait for Bye message
-	message, err := bufio.NewReader(c).ReadString('\n')
+	message, err := reader.ReadString('\n')
 	if err != nil {
 		prError("[%05d] Failed to receive bye: %s\n", conid, err)
 	}

@@ -92,7 +92,8 @@ func client(cl Client) {
 	}
 	fmt.Printf("Sent: %d bytes\n", l)
 
-	message, err := bufio.NewReader(c).ReadString('\n')
+	reader := bufio.NewReader(c)
+	message, err := reader.ReadString('\n')
 	if err != nil {
 		log.Fatalln("Failed to receive: ", err)
 	}
@@ -102,7 +103,7 @@ func client(cl Client) {
 	c.CloseWrite()
 
 	fmt.Printf("Waiting for Bye message\n")
-	message, err = bufio.NewReader(c).ReadString('\n')
+	message, err = reader.ReadString('\n')
 	if err != nil {
 		log.Fatalln("Failed to receive: ", err)
 	}
