@@ -16,6 +16,10 @@ import (
 	"sync/atomic"
 )
 
+const (
+	ioTimeout = 60 * time.Second
+)
+
 var (
 	clientStr   string
 	serverMode  bool
@@ -218,17 +222,31 @@ func client(cl Client, conid int) {
 			txbuf := randBuf(batch)
 			hash0.Write(txbuf)
 
-			l, err := c.Write(txbuf)
-			if err != nil {
-				prError("[%05d] Failed to send: %s\n", conid, err)
+			e := make(chan error, 0)
+			go func() {
+				l, err := c.Write(txbuf)
+				if err != nil {
+					e <- err
+				} else if l != batch {
+					e <- fmt.Errorf("Sent incorrect length: expected %d, got %d", batch, l)
+				} else {
+					e <- nil
+				}
+			}()
+
+			select {
+			case err := <-e:
+				if err != nil {
+					prError("[%05d] Failed to send: %s\n", conid, err)
+					break
+				}
+			case <-time.After(ioTimeout):
+				prError("[%05d] Send timed out\n", conid)
 				break
 			}
-			if l != batch {
-				prError("[%05d] Failed to send enough data: %d\n", conid, l)
-				break
-			}
-			total += l
-			remaining -= l
+
+			total += batch
+			remaining -= batch
 		}
 
 		// Tell the other end that we are done
@@ -256,19 +274,32 @@ func client(cl Client, conid int) {
 
 		rxbuf := make([]byte, batch)
 
-		l, err := io.ReadFull(c, rxbuf)
-		if err != nil {
-			prError("[%05d] Failed to receive: %s\n", conid, err)
-			break
-		}
-		if l != batch {
-			prError("[%05d] Failed to receive enough data: %d\n", conid, l)
+		e := make(chan error, 0)
+		go func() {
+			l, err := io.ReadFull(c, rxbuf)
+			if err != nil {
+				e <- err
+			} else if l != batch {
+				e <- fmt.Errorf("Received incorrect length, expected %d, got %d", batch, l)
+			} else {
+				e <- nil
+			}
+		}()
+
+		select {
+		case err := <-e:
+			if err != nil {
+				prError("[%05d] Failed to receive: %s\n", conid, err)
+				break
+			}
+		case <-time.After(ioTimeout):
+			prError("[%05d] Receive timed out\n", conid)
 			break
 		}
 
 		hash1.Write(rxbuf)
-		remaining -= l
-		totalReceived += l
+		remaining -= batch
+		totalReceived += batch
 	}
 
 	rxTime = time.Since(start)
