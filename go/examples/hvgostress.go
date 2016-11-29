@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"hash"
 	"io"
 	"log"
 	"net"
@@ -15,10 +16,17 @@ import (
 	"sync/atomic"
 )
 
+const (
+	ioTimeout = 60 * time.Second
+)
+
 var (
 	clientStr   string
 	serverMode  bool
 	maxDataLen  int
+	minDataLen  int
+	minBufLen   int
+	maxBufLen   int
 	connections int
 	sleepTime   int
 	verbose     int
@@ -42,7 +50,10 @@ type Client interface {
 func init() {
 	flag.StringVar(&clientStr, "c", "", "Client")
 	flag.BoolVar(&serverMode, "s", false, "Start as a Server")
+	flag.IntVar(&minDataLen, "L", 0, "Minimum Length of data")
 	flag.IntVar(&maxDataLen, "l", 64*1024, "Maximum Length of data")
+	flag.IntVar(&minBufLen, "B", 16*1024, "Minimum Buffer size")
+	flag.IntVar(&maxBufLen, "b", 16*1024, "Maximum Buffer size")
 	flag.IntVar(&connections, "i", 100, "Total number of connections")
 	flag.IntVar(&sleepTime, "w", 0, "Sleep time in seconds between new connections")
 	flag.IntVar(&parallel, "p", 1, "Run n connections in parallel")
@@ -62,6 +73,15 @@ func main() {
 	if serverMode {
 		fmt.Printf("Starting server\n")
 		server()
+		return
+	}
+
+	if minDataLen > maxDataLen {
+		fmt.Printf("minDataLen > maxDataLen!")
+		return
+	}
+	if minBufLen > maxBufLen {
+		fmt.Printf("minBuflen > maxBufLen!")
 		return
 	}
 
@@ -148,6 +168,21 @@ func parClient(wg *sync.WaitGroup, cl Client) {
 	wg.Done()
 }
 
+func md5Hash(h hash.Hash) [16]byte {
+	if h.Size() != md5.Size {
+		log.Fatalln("Hash is not an md5!")
+	}
+	s := h.Sum(nil) // Gets a slice
+
+	var r [16]byte
+
+	for i, b := range s {
+		r[i] = b
+	}
+	return r
+
+}
+
 func client(cl Client, conid int) {
 	c, err := cl.Dial(conid)
 	if c == nil {
@@ -159,47 +194,128 @@ func client(cl Client, conid int) {
 
 	// Create buffer with random data and random length.
 	// Make sure the buffer is not zero-length
-	buflen := rand.Intn(maxDataLen-1) + 1
-	txbuf := randBuf(buflen)
-	csum0 := md5.Sum(txbuf)
+	buflen := minDataLen
+	if maxDataLen > minDataLen {
+		buflen += rand.Intn(maxDataLen - minDataLen + 1)
+	}
+	hash0 := md5.New()
 
-	prDebug("[%05d] TX: %d bytes, md5=%02x\n", conid, buflen, csum0)
+	var txTime, rxTime time.Duration
+	start := time.Now()
 
 	w := make(chan int)
 	go func() {
-		l, err := c.Write(txbuf)
-		if err != nil {
-			prError("[%05d] Failed to send: %s\n", conid, err)
-		}
-		if l != buflen {
-			prError("[%05d] Failed to send enough data: %d\n", conid, l)
+		total := 0
+		remaining := buflen
+		for remaining > 0 {
+			batch := 0
+			bufsize := minBufLen
+			if maxBufLen > minBufLen {
+				bufsize += rand.Intn(maxBufLen - minBufLen + 1)
+			}
+			if remaining > bufsize {
+				batch = bufsize
+			} else {
+				batch = remaining
+			}
+
+			txbuf := randBuf(batch)
+			hash0.Write(txbuf)
+
+			e := make(chan error, 0)
+			go func() {
+				l, err := c.Write(txbuf)
+				if err != nil {
+					e <- err
+				} else if l != batch {
+					e <- fmt.Errorf("Sent incorrect length: expected %d, got %d", batch, l)
+				} else {
+					e <- nil
+				}
+			}()
+
+			select {
+			case err := <-e:
+				if err != nil {
+					prError("[%05d] Failed to send: %s\n", conid, err)
+					break
+				}
+			case <-time.After(ioTimeout):
+				prError("[%05d] Send timed out\n", conid)
+				break
+			}
+
+			total += batch
+			remaining -= batch
 		}
 
 		// Tell the other end that we are done
 		c.CloseWrite()
 
-		w <- l
+		txTime = time.Since(start)
+		w <- total
 	}()
 
-	rxbuf := make([]byte, buflen)
+	hash1 := md5.New()
 
-	reader := bufio.NewReader(c)
-	n, err := io.ReadFull(reader, rxbuf)
-	if err != nil {
-		prError("[%05d] Failed to receive: %s\n", conid, err)
-		return
+	totalReceived := 0
+	remaining := buflen
+	for remaining > 0 {
+		batch := 0
+		bufsize := minBufLen
+		if maxBufLen > minBufLen {
+			bufsize += rand.Intn(maxBufLen - minBufLen + 1)
+		}
+		if remaining > bufsize {
+			batch = bufsize
+		} else {
+			batch = remaining
+		}
+
+		rxbuf := make([]byte, batch)
+
+		e := make(chan error, 0)
+		go func() {
+			l, err := io.ReadFull(c, rxbuf)
+			if err != nil {
+				e <- err
+			} else if l != batch {
+				e <- fmt.Errorf("Received incorrect length, expected %d, got %d", batch, l)
+			} else {
+				e <- nil
+			}
+		}()
+
+		select {
+		case err := <-e:
+			if err != nil {
+				prError("[%05d] Failed to receive: %s\n", conid, err)
+				break
+			}
+		case <-time.After(ioTimeout):
+			prError("[%05d] Receive timed out\n", conid)
+			break
+		}
+
+		hash1.Write(rxbuf)
+		remaining -= batch
+		totalReceived += batch
 	}
-	csum1 := md5.Sum(rxbuf)
 
+	rxTime = time.Since(start)
 	totalSent := <-w
 
-	prInfo("[%05d] RX: %d bytes, md5=%02x (sent=%d)\n", conid, n, csum1, totalSent)
+	csum0 := md5Hash(hash0)
+	prDebug("[%05d] TX: %d bytes, md5=%02x in %s\n", conid, totalSent, csum0, txTime)
+
+	csum1 := md5Hash(hash1)
+	prInfo("[%05d] RX: %d bytes, md5=%02x in %s (sent=%d)\n", conid, totalReceived, csum1, rxTime, totalSent)
 	if csum0 != csum1 {
 		prError("[%05d] Checksums don't match", conid)
 	}
 
 	// Wait for Bye message
-	message, err := reader.ReadString('\n')
+	message, err := bufio.NewReader(c).ReadString('\n')
 	if err != nil {
 		prError("[%05d] Failed to receive bye: %s\n", conid, err)
 	}
