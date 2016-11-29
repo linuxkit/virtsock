@@ -196,6 +196,9 @@ func client(cl Client, conid int) {
 	}
 	hash0 := md5.New()
 
+	var txTime, rxTime time.Duration
+	start := time.Now()
+
 	w := make(chan int)
 	go func() {
 		total := 0
@@ -231,6 +234,7 @@ func client(cl Client, conid int) {
 		// Tell the other end that we are done
 		c.CloseWrite()
 
+		txTime = time.Since(start)
 		w <- total
 	}()
 
@@ -267,13 +271,14 @@ func client(cl Client, conid int) {
 		totalReceived += l
 	}
 
+	rxTime = time.Since(start)
 	totalSent := <-w
 
 	csum0 := md5Hash(hash0)
-	prDebug("[%05d] TX: %d bytes, md5=%02x\n", conid, totalSent, csum0)
+	prDebug("[%05d] TX: %d bytes, md5=%02x in %s\n", conid, totalSent, csum0, txTime)
 
 	csum1 := md5Hash(hash1)
-	prInfo("[%05d] RX: %d bytes, md5=%02x (sent=%d)\n", conid, totalReceived, csum1, totalSent)
+	prInfo("[%05d] RX: %d bytes, md5=%02x in %s (sent=%d)\n", conid, totalReceived, csum1, rxTime, totalSent)
 	if csum0 != csum1 {
 		prError("[%05d] Checksums don't match", conid)
 	}
