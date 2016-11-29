@@ -23,6 +23,7 @@
 #include <stdint.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #endif /* !_MSC_VER */
 
@@ -207,7 +208,7 @@ static inline void sockerr(const char *msg)
 #ifdef _MSC_VER
     fprintf(stderr, "%s Error: %d\n", msg, WSAGetLastError());
 #else
-    fprintf(stderr, "%s Error: %d. %s", msg, errno, strerror(errno));
+    fprintf(stderr, "%s Error: %d. %s\n", msg, errno, strerror(errno));
 #endif
 }
 
@@ -230,6 +231,23 @@ static inline int poll_enable(SOCKET s)
     return ret;
 }
 
+/* Set socket to non-blocking */
+static inline int poll_disable(SOCKET s)
+{
+    int ret;
+#ifdef _MSC_VER
+    unsigned long mode = 0;
+    ret = ioctlsocket(s, FIONBIO, &mode);
+#else
+    int flags;
+    flags = fcntl(s, F_GETFL, 0);
+    if (flags < 0)
+        return flags;
+    ret = fcntl(s, F_SETFL, flags & ~O_NONBLOCK);
+#endif
+    return ret;
+}
+
 /* Return true if we should poll */
 static inline int poll_check()
 {
@@ -242,8 +260,60 @@ static inline int poll_check()
 }
 
 #ifdef _MSC_VER
-static inline int poll(struct pollfd fds[], nfds_t nfds, int timeout)
+static inline int poll(struct pollfd fds[], unsigned long nfds, int timeout)
 {
     return WSAPoll(fds, nfds, timeout);
 }
 #endif
+
+/* Connect with timeout (in milliseconds), different to WinSock ConnectEx() */
+static int connect_ex(int s,
+                      const struct sockaddr *sa, socklen_t len, int timeout)
+{
+    struct timeval tv;
+    fd_set fdset;
+    int ret;
+
+    ret = poll_enable(s);
+    if (ret < 0)
+        return ret;
+
+    ret = connect(s, sa, len);
+    if (!ret)
+        goto out;  /* Connected */
+
+    /* Got an error, see if we should select() */
+#ifdef _MSC_VER
+    ret = WSAGetLastError();
+    if (ret != WSAEWOULDBLOCK) {
+        ret = SOCKET_ERROR;
+        goto out;
+    }
+#else
+    if (errno != EINPROGRESS)
+        goto out;
+#endif
+
+    FD_ZERO(&fdset);
+    FD_SET(s, &fdset);
+    tv.tv_sec = 0;
+    tv.tv_usec = timeout * 1000;
+
+    ret = select(s + 1, NULL, &fdset, NULL, &tv);
+    if (ret != 1) {
+        ret = SOCKET_ERROR;
+        goto out;
+    }
+
+    /* Check status */
+    ret = 0;
+    len = sizeof(ret);
+    /* char * is for windows... */
+    getsockopt(s, SOL_SOCKET, SO_ERROR, (char *)&ret, &len);
+    if (ret != 0)
+        ret = SOCKET_ERROR;
+
+out:
+    poll_disable(s);
+    return ret;
+}

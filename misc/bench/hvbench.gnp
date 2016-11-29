@@ -3,14 +3,17 @@
 xps_build = "14971"
 xps_4_4 = "dellxps-".xps_build."-4.4.30.dat"
 xps_4_8 = "dellxps-".xps_build."-4.8.10.dat"
-xps_out = "dellxps-".xps_build.".pdf"
+xps_pre = "dellxps-".xps_build.""
 
 nuc0_build = "14393"
 nuc0_4_4 = "nuc0-".nuc0_build."-4.4.30.dat"
 nuc0_4_8 = "nuc0-".nuc0_build."-4.8.10.dat"
-nuc0_out = "nuc0-".nuc0_build.".pdf"
+nuc0_pre = "nuc0-".nuc0_build.""
 
 
+##
+## Bandwidth plots
+##
 set terminal pdf color enhanced solid
 
 set key top left Left
@@ -27,29 +30,75 @@ set yrange [0:]
 set ytics 0,1024
 set mytics 2
 
+#
+# 4.4.x vs 4.8.x
+#
 # Dell XPS
 set title "Dell XPS i7-6560U @ 2.2GHz Build: ".xps_build.""
-set output xps_out
-plot xps_4_8 index 0 w lp lw 3 t "Host loopback (block)", \
-     ''      index 1 w lp lw 3 t "Host loopback (poll)", \
-     xps_4_4 index 1 w lp lw 3 t "From VM (4.4.x, block)", \
-     xps_4_8 index 2 w lp lw 3 t "From VM (4.8.x, block)", \
-     ''      index 3 w lp lw 3 t "From VM (4.8.x, poll)", \
-     ''      index 4 w lp lw 3 t "To VM (4.8.x, block)", \
-     ''      index 5 w lp lw 3 t "To VM (4.8.x, poll)"
+set output xps_pre."-bw-4.4-vs-4.8.pdf"
+plot xps_4_8 index  5 w lp lw 3 t "Host loopback (block)", \
+     xps_4_4 index  1 w lp lw 3 t "From VM (4.4.x, block)", \
+     xps_4_8 index  9 w lp lw 3 t "From VM (4.8.x, block)", \
+     ''      index 13 w lp lw 3 t "To VM (4.8.x, block)", \
 
 # NUC0
 set title "Intel NUC i7-5557U @ 3.1GHz Build: ".nuc0_build.""
-set output nuc0_out
-plot nuc0_4_8 index 0 w lp lw 3 t "Host loopback (block)", \
-     ''       index 1 w lp lw 3 t "Host loopback (poll)", \
-     nuc0_4_4 index 1 w lp lw 3 t "From VM (4.4.x, block)", \
-     nuc0_4_8 index 2 w lp lw 3 t "From VM (4.8.x, block)", \
-     ''       index 3 w lp lw 3 t "From VM (4.8.x, poll)", \
-     ''       index 4 w lp lw 3 t "To VM (4.8.x, block)", \
-     ''       index 5 w lp lw 3 t "To VM (4.8.x, poll)"
+set output nuc0_pre."-bw-4.4-vs-4.8.pdf"
+plot nuc0_4_8 index  5 w lp lw 3 t "Host loopback (block)", \
+     nuc0_4_4 index  1 w lp lw 3 t "From VM (4.4.x, block)", \
+     nuc0_4_8 index  9 w lp lw 3 t "From VM (4.8.x, block)", \
+     ''       index 13 w lp lw 3 t "To VM (4.8.x, block)", \
 
+#
+# Loopback Poll vs blocking send()/recv() calls
+#
+# Dell XPS
+set title "Dell XPS i7-6560U @ 2.2GHz Build: ".xps_build.""
+set output xps_pre."-bw-loopback.pdf"
+plot xps_4_8 index  5 w lp lw 3 t "Host loopback (block)", \
+     ''      index  6 w lp lw 3 t "Host loopback (recv() poll)", \
+     ''      index  7 w lp lw 3 t "Host loopback (send() poll)", \
+     ''      index  8 w lp lw 3 t "Host loopback (send()/recv() poll)"
 
+set title "Intel NUC i7-5557U @ 3.1GHz Build: ".nuc0_build.""
+set output nuc0_pre."-bw-loopback.pdf"
+plot nuc0_4_8 index  5 w lp lw 3 t "Host loopback (block)", \
+     ''       index  6 w lp lw 3 t "Host loopback (recv() poll)", \
+     ''       index  7 w lp lw 3 t "Host loopback (send() poll)", \
+     ''       index  8 w lp lw 3 t "Host loopback (send()/recv() poll)"
 
+#
+# From VM Poll vs blocking send()/recv() calls
+#
+# Dell XPS
+set title "Dell XPS i7-6560U @ 2.2GHz Build: ".xps_build." Kernel: 4.8.x"
+set output xps_pre."-bw-from-vm.pdf"
+plot xps_4_8 index  9 w lp lw 3 t "From VM (block)", \
+     ''      index 11 w lp lw 3 t "From VM (recv() poll)", \
+     ''      index 10 w lp lw 3 t "From VM (send() poll)", \
+     ''      index 12 w lp lw 3 t "From VM (send()/recv() poll)"
 
+set title "Intel NUC i7-5557U @ 3.1GHz Build: ".nuc0_build." Kernel: 4.8.x"
+set output nuc0_pre."-bw-from-vm.pdf"
+plot nuc0_4_8 index  9 w lp lw 3 t "From VM (block)", \
+     ''       index 11 w lp lw 3 t "From VM (recv() poll)", \
+     ''       index 10 w lp lw 3 t "From VM (send() poll)", \
+     ''       index 12 w lp lw 3 t "From VM (send()/recv() poll)"
 
+#
+# To VM Poll vs blocking send()/recv() calls
+#
+# Dell XPS
+set title "Dell XPS i7-6560U @ 2.2GHz Build: ".xps_build." Kernel: 4.8.x"
+set output xps_pre."-bw-to-vm.pdf"
+plot xps_4_8 index 13 w lp lw 3 t "To VM (block)", \
+     ''      index 14 w lp lw 3 t "To VM (recv() poll)", \
+     ''      index 15 w lp lw 3 t "To VM (send() poll)", \
+     ''      index 16 w lp lw 3 t "To VM (send()/recv() poll)"
+
+set title "Intel NUC i7-5557U @ 3.1GHz Build: ".nuc0_build." Kernel: 4.8.x"
+set output nuc0_pre."-bw-to-vm.pdf"
+plot nuc0_4_8 index 13 w lp lw 3 t "To VM (block)", \
+     ''       index 14 w lp lw 3 t "To VM (recv() poll)", \
+     ''       index 15 w lp lw 3 t "To VM (send() poll)", \
+     ''       index 16 w lp lw 3 t "To VM (send()/recv() poll)"

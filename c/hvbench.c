@@ -24,7 +24,10 @@ static WSADATA wsaData;
 static char buf[MAX_BUF_LEN];
 
 /* Amount of data to send per bandwidth iteration */
-#define HV_BM_BW_DATA ((uint64_t)1024 * 1024 * 1024)
+#define BM_BW_DATA ((uint64_t)1024 * 1024 * 1024)
+
+/* How many connections to make */
+#define BM_CONNS 2000
 
 static int verbose;
 #define INFO(...)                                                       \
@@ -50,6 +53,13 @@ static int verbose;
     } while (0)
 
 
+enum benchmark {
+    BM_BW_UNI = 1, /* Uni-directional Bandwidth benchamrk */
+    BM_LAT = 2,    /* Message ping-pong latency over single connection */
+    BM_CONN = 3,   /* Connection benchmark */
+};
+
+
 /* There's anecdotal evidence that a blocking send()/recv() is slower
  * than performing non-blocking send()/recv() calls and then use
  * epoll()/WSAPoll().  This flags switches between the two
@@ -69,8 +79,8 @@ static int bw_rx(SOCKET fd, int msg_sz)
     int ret;
 
     if (opt_poll) {
-	pfd.fd = fd;
-	pfd.events = POLLIN;
+        pfd.fd = fd;
+        pfd.events = POLLIN;
     }
 
     rx_sz = msg_sz ? msg_sz : ARRAY_SIZE(buf);
@@ -109,8 +119,8 @@ static int bw_tx(SOCKET fd, int msg_sz, uint64_t *bw)
     int ret;
 
     if (opt_poll) {
-	pfd.fd = fd;
-	pfd.events = POLLOUT;
+        pfd.fd = fd;
+        pfd.events = POLLOUT;
     }
 
     tx_sz = msg_sz ? msg_sz : ARRAY_SIZE(buf);
@@ -119,7 +129,7 @@ static int bw_tx(SOCKET fd, int msg_sz, uint64_t *bw)
 
     start = time_ns();
 
-    while (total_sent < HV_BM_BW_DATA) {
+    while (total_sent < BM_BW_DATA) {
         sent = 0;
         while (sent < tx_sz) {
             ret = send(fd, buf + sent, tx_sz - sent, 0);
@@ -143,7 +153,7 @@ static int bw_tx(SOCKET fd, int msg_sz, uint64_t *bw)
     diff = end - start;
 
     /* Bandwidth in Mbits per second */
-    *bw = (8 * HV_BM_BW_DATA * 1000000000) / (diff * 1024 * 1024);
+    *bw = (8 * BM_BW_DATA * 1000000000) / (diff * 1024 * 1024);
     ret = 0;
 
 err_out:
@@ -154,14 +164,15 @@ err_out:
 /*
  * Main server and client entry points
  */
-static int server(int bw, int msg_sz)
+static int server(int bm, int msg_sz)
 {
     SOCKET lsock, csock;
     SOCKADDR_HV sa, sac;
     socklen_t socklen = sizeof(sac);
+    int max_conn = 1;
     int ret = 0;
 
-    INFO("server: bw=%d msg_sz=%d\n", bw, msg_sz);
+    INFO("server: bm=%d msg_sz=%d\n", bm, msg_sz);
 
     lsock = socket(AF_HYPERV, SOCK_STREAM, HV_PROTOCOL_RAW);
     if (lsock == INVALID_SOCKET) {
@@ -182,46 +193,53 @@ static int server(int bw, int msg_sz)
         return -1;
     }
 
-    INFO("server: listening\n");
-
     ret = listen(lsock, SOMAXCONN);
     if (ret == SOCKET_ERROR) {
         sockerr("listen()");
-        closesocket(lsock);
-        return -1;
+        goto err_out;
     }
 
-    memset(&sac, 0, sizeof(sac));
-    csock = accept(lsock, (struct sockaddr *)&sac, &socklen);
-    if (csock == INVALID_SOCKET) {
-        sockerr("accept()");
-        closesocket(lsock);
-        return -1;
-    }
+    INFO("server: listening\n");
 
-    INFO("server: accepted\n");
+    if (bm == BM_CONN)
+        max_conn = BM_CONNS;
 
-    /* Switch to non-blocking if we want to poll */
-    if (opt_poll)
-        poll_enable(csock);
+    while (max_conn) {
+        max_conn--;
 
-    if (bw)
+        memset(&sac, 0, sizeof(sac));
+        csock = accept(lsock, (struct sockaddr *)&sac, &socklen);
+        if (csock == INVALID_SOCKET) {
+            sockerr("accept()");
+            ret = -1;
+            continue;
+        }
+
+        INFO("server: accepted\n");
+
+        /* Switch to non-blocking if we want to poll */
+        if (opt_poll)
+            poll_enable(csock);
+
         ret = bw_rx(csock, msg_sz);
 
-    closesocket(csock);
+        closesocket(csock);
+    }
+
+err_out:
     closesocket(lsock);
     return ret;
 }
 
 
-static int client(GUID target, int bw, int msg_sz)
+static int client(GUID target, int bm, int msg_sz)
 {
     SOCKET fd;
     SOCKADDR_HV sa;
     uint64_t res;
     int ret = 0;
 
-    INFO("client: bw=%d msg_sz=%d\n", bw, msg_sz);
+    INFO("client: bm=%d msg_sz=%d\n", bm, msg_sz);
 
     fd = socket(AF_HYPERV, SOCK_STREAM, HV_PROTOCOL_RAW);
     if (fd == INVALID_SOCKET) {
@@ -248,16 +266,107 @@ static int client(GUID target, int bw, int msg_sz)
     if (opt_poll)
         poll_enable(fd);
 
-    if (bw) {
+    if (bm == BM_BW_UNI) {
         ret = bw_tx(fd, msg_sz, &res);
         if (ret)
             goto err_out;
         printf("%d %"PRIu64"\n", msg_sz, res);
+    } else {
+        fprintf(stderr, "Unknown benchmark %d\n", bm);
+        ret = -1;
     }
 
 err_out:
     closesocket(fd);
     return ret;
+}
+
+/* Different client for connection tests */
+#define BM_CONN_TIMEOUT 500 /* 500ms */
+static int client_conn(GUID target)
+{
+    uint64_t start, end, diff;
+    int histogram[3 * 9 + 3];
+    SOCKADDR_HV sa;
+    SOCKET fd;
+    int sum;
+    int ret;
+    int i;
+
+    memset(histogram, 0, sizeof(histogram));
+
+    INFO("client: connection test\n");
+
+    for (i = 0; i < BM_CONNS; i++) {
+        fd = socket(AF_HYPERV, SOCK_STREAM, HV_PROTOCOL_RAW);
+        if (fd == INVALID_SOCKET) {
+            histogram[ARRAY_SIZE(histogram) - 1] += 1;
+            DBG("conn: %d -> socket error\n", i);
+            continue;
+        }
+
+        memset(&sa, 0, sizeof(sa));
+        sa.Family = AF_HYPERV;
+        sa.Reserved = 0;
+        sa.VmId = target;
+        sa.ServiceId = BM_GUID;
+
+        start = time_ns();
+
+        if (opt_poll)
+            ret = connect_ex(fd, (const struct sockaddr *)&sa, sizeof(sa),
+                             BM_CONN_TIMEOUT);
+        else
+            ret = connect(fd, (const struct sockaddr *)&sa, sizeof(sa));
+
+        if (ret == SOCKET_ERROR) {
+            histogram[ARRAY_SIZE(histogram) - 2] += 1;
+            DBG("conn: %d -> connect error\n", i);
+        } else {
+            end = time_ns();
+            diff = (end - start);
+            DBG("conn: %d -> %"PRIu64"ns\n", i, diff);
+
+            diff /= (1000 * 1000);
+            if (diff < 10)
+                histogram[diff] += 1;
+            else if (diff < 100)
+                histogram[9 + diff / 10] += 1;
+            else if (diff < 1000)
+                histogram[18 + diff / 100] += 1;
+            else
+                histogram[ARRAY_SIZE(histogram) - 3] += 1;
+        }
+
+        closesocket(fd);
+    }
+
+    /* Print the results */
+    printf("# time (ms) vs count vs cumulative percent\n");
+    sum = 0;
+    for (i = 0; i < ARRAY_SIZE(histogram); i++) {
+        sum += histogram[i];
+        if (i < 9)
+            printf("%d %d %6.2f\n", i + 1, histogram[i],
+                   sum * 100.0 / BM_CONNS);
+        else if (i < 18)
+            printf("%d %d %6.2f\n", (i - 9 + 1) * 10, histogram[i],
+                   sum * 100.0 / BM_CONNS);
+        else if (i < 27)
+            printf("%d %d %6.2f\n", (i - 18 + 1) * 100, histogram[i],
+                   sum * 100.0 / BM_CONNS);
+        else if (i == ARRAY_SIZE(histogram) - 3)
+            printf(">=%d %d %6.2f\n", (i - 27 + 1) * 1000, histogram[i],
+                   sum * 100.0 / BM_CONNS);
+        else if (i == ARRAY_SIZE(histogram) - 2)
+            printf("connect_err %d %6.2f\n", histogram[i],
+                   sum * 100.0 / BM_CONNS);
+        else
+            printf("socket_err %d %6.2f\n", histogram[i],
+                   sum * 100.0 / BM_CONNS);
+    }
+
+    return 0;
 }
 
 void usage(char *name)
@@ -268,8 +377,11 @@ void usage(char *name)
     printf("   'loopback': Connect in loopback mode\n");
     printf("   'parent':   Connect to the parent partition\n");
     printf("   <guid>:     Connect to VM with GUID\n");
-    printf(" -b        Bandwidth test\n");
-    printf(" -l        Latency test\n");
+    printf("\n");
+    printf(" -B        Bandwidth test\n");
+    printf(" -L        Latency test\n");
+    printf(" -C        Connection test\n");
+    printf("\n");
     printf(" -m <sz>   Message size in bytes\n");
     printf(" -p        Use poll instead of blocking send()/recv()\n");
     printf(" -v        Verbose output\n");
@@ -278,7 +390,7 @@ void usage(char *name)
 int __cdecl main(int argc, char **argv)
 {
     int opt_server = 0;
-    int opt_bw = 0;
+    int opt_bm = 0;
     int opt_msgsz = 0;
     GUID target;
     int res = 0;
@@ -317,10 +429,13 @@ int __cdecl main(int argc, char **argv)
             }
             i++;
 
-        } else if (strcmp(argv[i], "-b") == 0) {
-            opt_bw = 1;
-        } else if (strcmp(argv[i], "-l") == 0) {
-            opt_bw = 0;
+        } else if (strcmp(argv[i], "-B") == 0) {
+            opt_bm = BM_BW_UNI;
+        } else if (strcmp(argv[i], "-L") == 0) {
+            opt_bm = BM_LAT;
+        } else if (strcmp(argv[i], "-C") == 0) {
+            opt_bm = BM_CONN;
+
         } else if (strcmp(argv[i], "-m") == 0) {
             if (i + 1 >= argc) {
                 fprintf(stderr, "-m requires an argument\n");
@@ -338,15 +453,23 @@ int __cdecl main(int argc, char **argv)
         }
     }
 
-    if (!opt_bw) {
+    if (!opt_bm) {
+        fprintf(stderr, "You need to specify a test\n");
+        goto out;
+    }
+    if (opt_bm == BM_LAT) {
         fprintf(stderr, "Latency tests currently not implemented\n");
         goto out;
     }
 
-    if (opt_server)
-        res = server(opt_bw, opt_msgsz);
-    else
-        res = client(target, opt_bw, opt_msgsz);
+    if (opt_server) {
+        res = server(opt_bm, opt_msgsz);
+    } else {
+        if (opt_bm == BM_CONN)
+            res = client_conn(target);
+        else
+            res = client(target, opt_bm, opt_msgsz);
+    }
 
 out:
 #ifdef _MSC_VER

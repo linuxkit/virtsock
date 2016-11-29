@@ -5,84 +5,355 @@
 # Linux Total Memory: 1.934 GiB
 # Linux CPUs: 2
 #
+# Index 0: connect() from VM
+# time (ms) vs count
+1 1834  91.70
+2 97  96.55
+3 22  97.65
+4 9  98.10
+5 2  98.20
+6 4  98.40
+7 4  98.60
+8 1  98.65
+9 1  98.70
+10 2  98.80
+20 3  98.95
+30 0  98.95
+40 1  99.00
+50 2  99.10
+60 1  99.15
+70 0  99.15
+80 0  99.15
+90 0  99.15
+100 0  99.15
+200 2  99.25
+300 3  99.40
+400 2  99.50
+500 4  99.70
+600 1  99.75
+700 1  99.80
+800 2  99.90
+900 0  99.90
+>=1000 2 100.00
+connect_err 0 100.00
+socket_err 0 100.00
+
+
+# Index 1: connect() to VM
+# time (ms) vs count vs cumulative percent
+1 1846  92.30
+2 79  96.25
+3 21  97.30
+4 10  97.80
+5 8  98.20
+6 5  98.45
+7 3  98.60
+8 2  98.70
+9 1  98.75
+10 0  98.75
+20 7  99.10
+30 0  99.10
+40 2  99.20
+50 0  99.20
+60 2  99.30
+70 0  99.30
+80 0  99.30
+90 0  99.30
+100 0  99.30
+200 2  99.40
+300 4  99.60
+400 2  99.70
+500 2  99.80
+600 0  99.80
+700 0  99.80
+800 1  99.85
+900 1  99.90
+>=1000 1  99.95
+connect_err 1 100.00
+socket_err 0 100.00
+
+
+# Index 2: connect() to VM with timeout
+# time (ms) vs count vs cumulative percent
+1 79   3.95
+2 0   3.95
+3 0   3.95
+4 0   3.95
+5 0   3.95
+6 0   3.95
+7 0   3.95
+8 0   3.95
+9 0   3.95
+10 0   3.95
+20 0   3.95
+30 0   3.95
+40 0   3.95
+50 0   3.95
+60 0   3.95
+70 0   3.95
+80 0   3.95
+90 0   3.95
+100 0   3.95
+200 1   4.00
+300 0   4.00
+400 0   4.00
+500 0   4.00
+600 0   4.00
+700 0   4.00
+800 0   4.00
+900 0   4.00
+>=1000 0   4.00
+connect_err 1920 100.00
+socket_err 0 100.00
+
+
+# Index 3: connect() from VM with load
+# C:\Program Files\Docker\Docker\Resources\bin\docker.exe: Error response
+# from daemon: A connection attempt failed because
+# the connected party did not properly respond after a period of time, or
+# established connection failed because connected
+# host has failed to respond..
+# See 'C:\Program Files\Docker\Docker\Resources\bin\docker.exe run --help'.
+# dummy data point
+1 0
+
+
+# Index 4: connect() to VM with load
+# C:\Program Files\Docker\Docker\Resources\bin\docker.exe: Error response
+# from daemon: A connection attempt failed because
+# the connected party did not properly respond after a period of time, or
+# established connection failed because connected
+# host has failed to respond..
+# See 'C:\Program Files\Docker\Docker\Resources\bin\docker.exe run --help'.
+# time (ms) vs count vs cumulative percent
+1 1290  64.50
+2 30  66.00
+3 16  66.80
+4 28  68.20
+5 21  69.25
+6 23  70.40
+7 25  71.65
+8 19  72.60
+9 16  73.40
+10 22  74.50
+20 87  78.85
+30 28  80.25
+40 11  80.80
+50 8  81.20
+60 3  81.35
+70 2  81.45
+80 0  81.45
+90 0  81.45
+100 0  81.45
+200 2  81.55
+300 1  81.60
+400 0  81.60
+500 1  81.65
+600 0  81.65
+700 0  81.65
+800 1  81.70
+900 0  81.70
+>=1000 3  81.85
+connect_err 363 100.00
+socket_err 0 100.00
+
+
 # BW: Message sizes (in Bytes) vs Bandwidth (in Mb/s)
-# BW: Host loopback mode blocking
-8 26
-64 259
-128 553
-512 2342
-1024 4442
-1518 6678
-2048 7979
-4096 9034
-8192 11628
-9018 11802
-16384 12664
+# Index 5: BW: Host loopback mode blocking
+8 29
+64 258
+128 546
+512 2224
+1024 3768
+1518 4770
+2048 7259
+3072 8648
+4096 9166
+5120 9736
+8192 11284
+9018 11113
+12288 13024
+16384 12021
 
 
-# BW: Host loopback mode poll()
-8 27
-64 304
-128 643
-512 2474
-1024 4738
-1518 6961
-2048 8893
-4096 12137
-8192 18397
-9018 19104
-16384 15423
+# Index 6: BW: Host loopback mode poll() server
+8 29
+64 262
+128 550
+512 2203
+1024 4277
+1518 5426
+2048 7245
+3072 8735
+4096 8893
+5120 9776
+8192 11885
+9018 11377
+12288 13101
+16384 11761
 
 
-# BW: Transmit from VM blocking
+# Index 7: BW: Host loopback mode poll() client
+8 29
+64 250
+128 528
+512 2224
+1024 3782
+1518 5544
+2048 7230
+3072 8658
+4096 8368
+5120 9768
+8192 10216
+9018 10869
+12288 11686
+16384 11134
+
+
+# Index 8: BW: Host loopback mode poll() both
+8 29
+64 250
+128 530
+512 2052
+1024 4285
+1518 6034
+2048 6999
+3072 8884
+4096 8230
+5120 8632
+8192 11319
+9018 10844
+12288 12055
+16384 10936
+
+
+# Index 9: BW: Transmit from VM blocking
 8 12
-64 104
-128 203
-512 622
-1024 1081
-1518 1161
-2048 1463
-4096 1570
-8192 1420
-9018 1811
-16384 1863
+64 96
+128 193
+512 658
+1024 963
+1518 1253
+2048 1377
+3072 1746
+4096 1674
+5120 1969
+8192 1474
+9018 1952
+12288 2472
+16384 1271
 
 
-# BW: Transmit from VM poll()
-8 13
-64 102
-128 182
-512 744
-1024 1361
+# Index 10: BW: Transmit from VM poll() Linux
+8 12
+64 96
+128 189
+512 668
+1024 1320
+1518 1491
+2048 1372
+3072 1450
+4096 1981
+5120 1364
+8192 1533
+9018 1367
+12288 1425
+16384 1407
+
+
+# Index 11: BW: Transmit from VM poll() Windows
+8 12
+64 97
+128 187
+512 660
+1024 1007
+1518 1519
+2048 1536
+3072 1458
+4096 1545
+5120 1473
+8192 1655
+9018 1795
+12288 1524
+16384 1723
+
+
+# Index 12: BW: Transmit from VM poll() both
+8 12
+64 99
+128 191
+512 678
+1024 1037
+1518 1347
+2048 1435
+3072 1514
+4096 1456
+5120 1547
+8192 1436
+9018 1359
+12288 1993
+16384 1522
+
+
+# Index 13: BW: Transmit to VM blocking
+8 21
+64 64
+128 187
+512 509
+1024 2188
+1518 1079
+2048 2438
+3072 3180
+4096 2426
+5120 4141
+8192 3912
+9018 2973
+12288 5014
+
+
+# Index 14: BW: Transmit to VM poll() Linux
+8 24
+64 95
+128 177
+512 545
+1024 2030
+1518 1811
+2048 2974
+3072 1938
+4096 3103
+5120 1140
+8192 3605
+9018 4286
+12288 3953
+
+
+# Index 15: BW: Transmit to VM poll() Windows
+8 22
+64 126
+128 165
+512 515
+1024 1906
+1518 1036
+2048 2720
+3072 3207
+4096 2007
+5120 1106
+8192 2491
+9018 5036
+12288 7401
+
+
+# Index 16: BW: Transmit to VM poll()
+8 24
+64 60
+128 169
+512 699
+1024 1740
 1518 1867
-2048 1847
-4096 2406
-8192 2560
-9018 1934
-16384 3141
-
-
-# BW: Transmit to VM blocking
-8 14
-64 106
-128 350
-512 206
-1024 2148
-1518 2361
-2048 2879
-4096 2928
-8192 3957
-9018 2496
-
-
-# BW: Transmit to VM poll()
-8 18
-64 191
-128 240
-512 806
-1024 955
-1518 993
-2048 633
-4096 2231
-8192 2854
-9018 2623
+2048 2017
+3072 2681
+4096 2459
+5120 2574
+8192 1856
+9018 2477
+12288 2068
