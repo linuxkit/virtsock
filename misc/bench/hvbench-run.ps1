@@ -35,7 +35,7 @@ $errout = ".\hvbench.err.txt"
 #
 # Connections tests
 #
-Write-Output "# Index $idx: connect() from VM"
+Write-Output "# Index ${idx}: connect() from VM"
 $idx++
 # Start the server on the host and give it time to start
 Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -C" -RedirectStandardError $errout
@@ -44,7 +44,7 @@ docker run --rm --privileged --pid=host justincormack/nsenter1 /hvbench -c paren
 
 Write-Output ""
 Write-Output ""
-Write-Output "# Index $idx: connect() to VM"
+Write-Output "# Index ${idx}: connect() to VM"
 $idx++
 # Start the server in the VM detached
 $svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -C
@@ -53,7 +53,7 @@ Start-Sleep -s 2
 docker kill $svrid 2> $null
 Write-Output ""
 Write-Output ""
-Write-Output "# Index $idx: connect() to VM with timeout"
+Write-Output "# Index ${idx}: connect() to VM with timeout"
 $idx++
 # Start the server in the VM detached
 $svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -C
@@ -71,7 +71,7 @@ start-job -scriptblock { while($true){} }
 
 Write-Output ""
 Write-Output ""
-Write-Output "# Index $idx: connect() from VM with load"
+Write-Output "# Index ${idx}: connect() from VM with load"
 $idx++
 # Start the server on the host and give it time to start
 Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -C" -RedirectStandardError $errout
@@ -79,7 +79,7 @@ Start-Sleep -s 2
 docker run --rm --privileged --pid=host justincormack/nsenter1 /hvbench -c parent -C
 Write-Output ""
 Write-Output ""
-Write-Output "# Index $idx: connect() to VM with load"
+Write-Output "# Index ${idx}: connect() to VM with load"
 $idx++
 # Start the server in the VM detached
 $svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -C
@@ -93,88 +93,161 @@ get-job | remove-job -force
 #
 # Bandwidth tests
 #
+# We have loopback mode, transmit from the VM and transmit to the
+# VM. Then we have the receiver doing bulk receives into a large
+# buffer or just calling receive with the message size. Finally, we
+# can do blocking or non-blocking send() and recv() calls. Below we
+# test the entire cross-product of these options.
 Write-Output ""
 Write-Output ""
 Write-Output "# BW: Message sizes (in Bytes) vs Bandwidth (in Mb/s)"
-Write-Output "# Index $idx: BW: Host loopback mode blocking"
+Write-Output "# Index ${idx}: BW: Host loopback mode blocking (msg recv())"
 $idx++
 foreach ($MsgSz in $MsgSzs) {
-    # Start the server on the host and give it time to start
-    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B"  -RedirectStandardError $errout
+    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B -m $MsgSz"  -RedirectStandardError $errout
     Start-Sleep -s 2
     .\hvbench.exe -c loopback -B -m $MsgSz
 }
 Write-Output ""
 Write-Output ""
-Write-Output "# Index $idx: BW: Host loopback mode poll() server"
+Write-Output "# Index ${idx}: BW: Host loopback mode poll() server (msg recv())"
 $idx++
 foreach ($MsgSz in $MsgSzs) {
-    # Start the server on the host and give it time to start
-    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B -p"  -RedirectStandardError $errout
+    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B -p -m $MsgSz"  -RedirectStandardError $errout
     Start-Sleep -s 2
     .\hvbench.exe -c loopback -B -m $MsgSz
 }
 Write-Output ""
 Write-Output ""
-Write-Output "# Index $idx: BW: Host loopback mode poll() client"
+Write-Output "# Index ${idx}: BW: Host loopback mode poll() client (msg recv())"
 $idx++
 foreach ($MsgSz in $MsgSzs) {
-    # Start the server on the host and give it time to start
-    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B"  -RedirectStandardError $errout
+    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B -m $MsgSz"  -RedirectStandardError $errout
     Start-Sleep -s 2
     .\hvbench.exe -c loopback -B -p -m $MsgSz
 }
 Write-Output ""
 Write-Output ""
-Write-Output "# Index $idx: BW: Host loopback mode poll() both"
+Write-Output "# Index ${idx}: BW: Host loopback mode poll() both (msg recv())"
 $idx++
 foreach ($MsgSz in $MsgSzs) {
-    # Start the server on the host and give it time to start
-    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B -p"  -RedirectStandardError $errout
+    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B -p -m $MsgSz"  -RedirectStandardError $errout
     Start-Sleep -s 2
     .\hvbench.exe -c loopback -B -p -m $MsgSz
 }
 
 Write-Output ""
 Write-Output ""
-Write-Output "# Index $idx: BW: Transmit from VM blocking"
+Write-Output "# Index ${idx}: BW: Host loopback mode blocking (bulk recv())"
 $idx++
 foreach ($MsgSz in $MsgSzs) {
-    # Start the server on the host and give it time to start
+    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B"  -RedirectStandardError $errout
+    Start-Sleep -s 2
+    .\hvbench.exe -c loopback -B -m $MsgSz
+}
+Write-Output ""
+Write-Output ""
+Write-Output "# Index ${idx}: BW: Host loopback mode poll() server (bulk recv())"
+$idx++
+foreach ($MsgSz in $MsgSzs) {
+    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B -p"  -RedirectStandardError $errout
+    Start-Sleep -s 2
+    .\hvbench.exe -c loopback -B -m $MsgSz
+}
+Write-Output ""
+Write-Output ""
+Write-Output "# Index ${idx}: BW: Host loopback mode poll() client (bulk recv())"
+$idx++
+foreach ($MsgSz in $MsgSzs) {
+    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B"  -RedirectStandardError $errout
+    Start-Sleep -s 2
+    .\hvbench.exe -c loopback -B -p -m $MsgSz
+}
+Write-Output ""
+Write-Output ""
+Write-Output "# Index ${idx}: BW: Host loopback mode poll() both (bulk recv())"
+$idx++
+foreach ($MsgSz in $MsgSzs) {
+    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B -p"  -RedirectStandardError $errout
+    Start-Sleep -s 2
+    .\hvbench.exe -c loopback -B -p -m $MsgSz
+}
+
+
+Write-Output ""
+Write-Output ""
+Write-Output "# Index ${idx}: BW: Transmit from VM blocking (msg recv())"
+$idx++
+foreach ($MsgSz in $MsgSzs) {
+    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B -m $MsgSz" -RedirectStandardError $errout
+    Start-Sleep -s 2
+    docker run --rm --privileged --pid=host justincormack/nsenter1 /hvbench -c parent -B -m $MsgSz
+}
+Write-Output ""
+Write-Output ""
+Write-Output "# Index ${idx}: BW: Transmit from VM poll() Linux (msg recv())"
+$idx++
+foreach ($MsgSz in $MsgSzs) {
+    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B -m $MsgSz" -RedirectStandardError $errout
+    Start-Sleep -s 2
+    docker run --rm --privileged --pid=host justincormack/nsenter1 /hvbench -c parent -B -p -m $MsgSz
+}
+Write-Output ""
+Write-Output ""
+Write-Output "# Index ${idx}: BW: Transmit from VM poll() Windows (msg recv())"
+$idx++
+foreach ($MsgSz in $MsgSzs) {
+    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B -p -m $MsgSz" -RedirectStandardError $errout
+    Start-Sleep -s 2
+    docker run --rm --privileged --pid=host justincormack/nsenter1 /hvbench -c parent -B -m $MsgSz
+}
+Write-Output ""
+Write-Output ""
+Write-Output "# Index ${idx}: BW: Transmit from VM poll() both (msg recv())"
+$idx++
+foreach ($MsgSz in $MsgSzs) {
+    Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B -p -m $MsgSz" -RedirectStandardError $errout
+    Start-Sleep -s 2
+    docker run --rm --privileged --pid=host justincormack/nsenter1 /hvbench -c parent -B -p -m $MsgSz
+}
+
+Write-Output ""
+Write-Output ""
+Write-Output "# Index ${idx}: BW: Transmit from VM blocking (bulk recv())"
+$idx++
+foreach ($MsgSz in $MsgSzs) {
     Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B" -RedirectStandardError $errout
     Start-Sleep -s 2
     docker run --rm --privileged --pid=host justincormack/nsenter1 /hvbench -c parent -B -m $MsgSz
 }
 Write-Output ""
 Write-Output ""
-Write-Output "# Index $idx: BW: Transmit from VM poll() Linux"
+Write-Output "# Index ${idx}: BW: Transmit from VM poll() Linux (bulk recv())"
 $idx++
 foreach ($MsgSz in $MsgSzs) {
-    # Start the server on the host and give it time to start
     Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B" -RedirectStandardError $errout
     Start-Sleep -s 2
     docker run --rm --privileged --pid=host justincormack/nsenter1 /hvbench -c parent -B -p -m $MsgSz
 }
 Write-Output ""
 Write-Output ""
-Write-Output "# Index $idx: BW: Transmit from VM poll() Windows"
+Write-Output "# Index ${idx}: BW: Transmit from VM poll() Windows (bulk recv())"
 $idx++
 foreach ($MsgSz in $MsgSzs) {
-    # Start the server on the host and give it time to start
     Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B -p" -RedirectStandardError $errout
     Start-Sleep -s 2
     docker run --rm --privileged --pid=host justincormack/nsenter1 /hvbench -c parent -B -m $MsgSz
 }
 Write-Output ""
 Write-Output ""
-Write-Output "# Index $idx: BW: Transmit from VM poll() both"
+Write-Output "# Index ${idx}: BW: Transmit from VM poll() both (bulk recv())"
 $idx++
 foreach ($MsgSz in $MsgSzs) {
-    # Start the server on the host and give it time to start
     Start-Process -NoNewWindow -FilePath .\hvbench.exe -ArgumentList "-s -B -p" -RedirectStandardError $errout
     Start-Sleep -s 2
     docker run --rm --privileged --pid=host justincormack/nsenter1 /hvbench -c parent -B -p -m $MsgSz
 }
+
 
 if ($linver.ToString() -match "4.4") {
     Write-Output "# BW: Transmit to VM skipped to Linux kernel $linver"
@@ -184,10 +257,50 @@ if ($linver.ToString() -match "4.4") {
 # We only have 4.4 or later. For later kernels run the other direction to
 Write-Output ""
 Write-Output ""
-Write-Output "# Index $idx: BW: Transmit to VM blocking"
+Write-Output "# Index ${idx}: BW: Transmit to VM blocking (msg recv())"
 $idx++
 foreach ($MsgSz in $MsgSzs) {
-    # Start the server in the VM detached
+    $svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -B -m $MsgSz
+    Start-Sleep -s 2
+    .\hvbench.exe -c $VMId -B -m $MsgSz
+    docker kill $svrid 2> $null
+}
+Write-Output ""
+Write-Output ""
+Write-Output "# Index ${idx}: BW: Transmit to VM poll() Linux (msg recv())"
+$idx++
+foreach ($MsgSz in $MsgSzs) {
+    $svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -B -p -m $MsgSz
+    Start-Sleep -s 2
+    .\hvbench.exe -c $VMId -B -m $MsgSz
+    docker kill $svrid 2> $null
+}
+Write-Output ""
+Write-Output ""
+Write-Output "# Index ${idx}: BW: Transmit to VM poll() Windows (msg recv())"
+$idx++
+foreach ($MsgSz in $MsgSzs) {
+    $svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -B -m $MsgSz
+    Start-Sleep -s 2
+    .\hvbench.exe -c $VMId -B -p -m $MsgSz
+    docker kill $svrid 2> $null
+}
+Write-Output ""
+Write-Output ""
+Write-Output "# Index ${idx}: BW: Transmit to VM poll() both (msg recv())"
+$idx++
+foreach ($MsgSz in $MsgSzs) {
+    $svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -B -p -m $MsgSz
+    Start-Sleep -s 2
+    .\hvbench.exe -c $VMId -B -p -m $MsgSz
+    docker kill $svrid 2> $null
+}
+
+Write-Output ""
+Write-Output ""
+Write-Output "# Index ${idx}: BW: Transmit to VM blocking (bulk recv())"
+$idx++
+foreach ($MsgSz in $MsgSzs) {
     $svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -B
     Start-Sleep -s 2
     .\hvbench.exe -c $VMId -B -m $MsgSz
@@ -195,10 +308,9 @@ foreach ($MsgSz in $MsgSzs) {
 }
 Write-Output ""
 Write-Output ""
-Write-Output "# Index $idx: BW: Transmit to VM poll() Linux"
+Write-Output "# Index ${idx}: BW: Transmit to VM poll() Linux (bulk recv())"
 $idx++
 foreach ($MsgSz in $MsgSzs) {
-    # Start the server in the VM detached
     $svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -B -p
     Start-Sleep -s 2
     .\hvbench.exe -c $VMId -B -m $MsgSz
@@ -206,10 +318,9 @@ foreach ($MsgSz in $MsgSzs) {
 }
 Write-Output ""
 Write-Output ""
-Write-Output "# Index $idx: BW: Transmit to VM poll() Windows"
+Write-Output "# Index ${idx}: BW: Transmit to VM poll() Windows (bulk recv())"
 $idx++
 foreach ($MsgSz in $MsgSzs) {
-    # Start the server in the VM detached
     $svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -B
     Start-Sleep -s 2
     .\hvbench.exe -c $VMId -B -p -m $MsgSz
@@ -217,10 +328,9 @@ foreach ($MsgSz in $MsgSzs) {
 }
 Write-Output ""
 Write-Output ""
-Write-Output "# Index $idx: BW: Transmit to VM poll()"
+Write-Output "# Index ${idx}: BW: Transmit to VM poll() both (bulk recv())"
 $idx++
 foreach ($MsgSz in $MsgSzs) {
-    # Start the server in the VM detached
     $svrid = docker run -d --privileged --pid=host justincormack/nsenter1 /hvbench -s -B -p
     Start-Sleep -s 2
     .\hvbench.exe -c $VMId -B -p -m $MsgSz
