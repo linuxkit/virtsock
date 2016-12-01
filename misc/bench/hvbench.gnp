@@ -8,7 +8,9 @@ xps_pre = "dellxps-".xps_build.""
 nuc0_build = "14393"
 nuc0_4_4 = "nuc0-".nuc0_build."-4.4.30.dat"
 nuc0_4_8 = "nuc0-".nuc0_build."-4.8.10.dat"
+nuc0_4_8_hv = "nuc0-".nuc0_build."-4.8.10-hvbuf.dat"
 nuc0_pre = "nuc0-".nuc0_build.""
+nuc0_hv_pre = "nuc0-".nuc0_build."-8k"
 
 
 ##
@@ -44,10 +46,12 @@ plot xps_4_8 index  9 w lp lw 3 t "Host loopback (block, bulk recv)", \
 # NUC0
 set title "Intel NUC i7-5557U @ 3.1GHz Build: ".nuc0_build.""
 set output nuc0_pre."-bw-4.4-vs-4.8.pdf"
-plot nuc0_4_8 index  9 w lp lw 3 t "Host loopback (block, bulk recv)", \
-     nuc0_4_4 index  1 w lp lw 3 t "From VM (4.4.x, block, bulk recv)", \
-     nuc0_4_8 index 17 w lp lw 3 t "From VM (4.8.x, block, bulk recv)", \
-     ''       index 25 w lp lw 3 t "To VM (4.8.x, block, bulk recv)", \
+plot nuc0_4_8    index  9 w lp lw 3 t "Host loopback (block, bulk recv)", \
+     nuc0_4_4    index  1 w lp lw 3 t "From VM (4.4.x, block, bulk recv)", \
+     nuc0_4_8    index 17 w lp lw 3 t "From VM (4.8.x, block, bulk recv)", \
+     ''          index 25 w lp lw 3 t "To VM (4.8.x, block, bulk recv)", \
+     nuc0_4_8_hv index 17 w lp lw 3 t "From VM (4.8.x-8k, block, bulk recv)", \
+     ''          index 25 w lp lw 3 t "To VM (4.8.x-8k, block, bulk recv)"
 
 #
 # Loopback Poll vs blocking send()/recv() calls
@@ -75,6 +79,7 @@ plot nuc0_4_8 index  5 w lp lw 3 t "Host loopback (block, msg recv)", \
      ''       index 11 w lp lw 3 t "Host loopback (send() poll, bulk recv)", \
      ''       index 12 w lp lw 3 t "Host loopback (send()/recv() poll, bulk recv)"
 
+
 #
 # From VM Poll vs blocking send()/recv() calls
 #
@@ -101,6 +106,17 @@ plot nuc0_4_8 index 13 w lp lw 3 t "From VM (block, msg recv)", \
      ''       index 18 w lp lw 3 t "From VM (send() poll, bulk recv)", \
      ''       index 20 w lp lw 3 t "From VM (send()/recv(), bulk recv)"
 
+set title "Intel NUC i7-5557U @ 3.1GHz Build: ".nuc0_build." Kernel: 4.8.x 8k"
+set output nuc0_hv_pre."-bw-from-vm.pdf"
+plot nuc0_4_8_hv index 13 w lp lw 3 t "From VM (block, msg recv)", \
+     ''          index 15 w lp lw 3 t "From VM (recv() poll, msg recv)", \
+     ''          index 14 w lp lw 3 t "From VM (send() poll, msg recv)", \
+     ''          index 16 w lp lw 3 t "From VM (send()/recv() poll, msg recv)", \
+     ''          index 17 w lp lw 3 t "From VM (block, bulk recv)", \
+     ''          index 19 w lp lw 3 t "From VM (recv() poll, bulk recv)", \
+     ''          index 18 w lp lw 3 t "From VM (send() poll, bulk recv)", \
+     ''          index 20 w lp lw 3 t "From VM (send()/recv(), bulk recv)"
+
 #
 # To VM Poll vs blocking send()/recv() calls
 #
@@ -126,3 +142,14 @@ plot nuc0_4_8 index 21 w lp lw 3 t "To VM (block, msg recv)", \
      ''       index 26 w lp lw 3 t "To VM (recv() poll, bulk recv)", \
      ''       index 27 w lp lw 3 t "To VM (send() poll, bulk recv)", \
      ''       index 28 w lp lw 3 t "To VM (send()/recv() poll, bulk recv)"
+
+set title "Intel NUC i7-5557U @ 3.1GHz Build: ".nuc0_build." Kernel: 4.8.x 8k"
+set output nuc0_hv_pre."-bw-to-vm.pdf"
+plot nuc0_4_8_hv index 21 w lp lw 3 t "To VM (block, msg recv)", \
+     ''          index 22 w lp lw 3 t "To VM (recv() poll, msg recv)", \
+     ''          index 23 w lp lw 3 t "To VM (send() poll, msg recv)", \
+     ''          index 24 w lp lw 3 t "To VM (send()/recv() poll, msg recv)", \
+     ''          index 25 w lp lw 3 t "To VM (block, bulk recv)", \
+     ''          index 26 w lp lw 3 t "To VM (recv() poll, bulk recv)", \
+     ''          index 27 w lp lw 3 t "To VM (send() poll, bulk recv)", \
+     ''          index 28 w lp lw 3 t "To VM (send()/recv() poll, bulk recv)"
