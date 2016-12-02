@@ -23,8 +23,8 @@ static WSADATA wsaData;
 #define MAX_BUF_LEN (2 * 1024 * 1024)
 static char buf[MAX_BUF_LEN];
 
-/* Amount of data to send per bandwidth iteration */
-#define BM_BW_DATA ((uint64_t)1024 * 1024 * 1024)
+/* Time (in ns) to run eeach bandwidth test */
+#define BM_BW_TIME (10ULL * 1000 * 1000 * 1000)
 
 /* How many connections to make */
 #define BM_CONNS 2000
@@ -112,8 +112,8 @@ err_out:
 static int bw_tx(SOCKET fd, int msg_sz, uint64_t *bw)
 {
     struct pollfd pfd = { 0 };
-    uint64_t total_sent = 0;
     uint64_t start, end, diff;
+    int msgs_sent = 0;
     int tx_sz;
     int sent;
     int ret;
@@ -128,8 +128,9 @@ static int bw_tx(SOCKET fd, int msg_sz, uint64_t *bw)
     DBG("bw_tx: msg_sz=%d tx_sz=%d \n", msg_sz, tx_sz);
 
     start = time_ns();
+    end = time_ns();
 
-    while (total_sent < BM_BW_DATA) {
+    while (end < start + BM_BW_TIME) {
         sent = 0;
         while (sent < tx_sz) {
             ret = send(fd, buf + sent, tx_sz - sent, 0);
@@ -143,17 +144,19 @@ static int bw_tx(SOCKET fd, int msg_sz, uint64_t *bw)
                 ret = -1;
                 goto err_out;
             }
-            TRC("Sent: %d %d\n", sent, ret);
             sent += ret;
+            TRC("Sent: %d %d\n", sent, ret);
         }
-        total_sent += sent;
+        msgs_sent++;
+        if (!(msgs_sent % 1000))
+            end = time_ns();
     }
-
-    end = time_ns();
-    diff = end - start;
+    DBG("bw_tx: %d %"PRIu64" %"PRIu64"\n", msgs_sent, start, end);
 
     /* Bandwidth in Mbits per second */
-    *bw = (8 * BM_BW_DATA * 1000000000) / (diff * 1024 * 1024);
+    diff = end - start;
+    diff /= 1000 * 1000; /* Time in milliseconds */
+    *bw = (8ULL * msgs_sent * msg_sz * 1000) / (diff * 1024 * 1024);
     ret = 0;
 
 err_out:
@@ -169,7 +172,7 @@ static int server(int bm, int msg_sz)
     SOCKET lsock, csock;
     SOCKADDR_HV sa, sac;
     socklen_t socklen = sizeof(sac);
-    int max_conn = 1;
+    int max_conn;
     int ret = 0;
 
     INFO("server: bm=%d msg_sz=%d\n", bm, msg_sz);
@@ -203,6 +206,8 @@ static int server(int bm, int msg_sz)
 
     if (bm == BM_CONN)
         max_conn = BM_CONNS;
+    else
+        max_conn = 1;
 
     while (max_conn) {
         max_conn--;
