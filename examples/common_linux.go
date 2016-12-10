@@ -7,7 +7,7 @@ import (
 	"net"
 	"os"
 
-	"../vsock"
+	"github.com/rneugeba/virtsock/pkg/vsock"
 )
 
 var (

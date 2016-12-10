@@ -36,7 +36,7 @@ specified when starting Hyperkit and must be passed to the option:
 7,virtio-sock,guest_cid=3,path=/var/run`)
 
 In Docker mode everything is implied to be as it is configured by
-Docker 4 Mac. This is the default but can be given explicitly with:
+Docker for Mac. This is the default but can be given explicitly with:
 
     macos$ ./hvgostress.darwin -s -m docker
 

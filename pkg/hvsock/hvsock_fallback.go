@@ -1,5 +1,6 @@
-// Dummy implementation to compile on Mac OSX
+// +build !linux,!windows
 
+// Dummy implementation to compile on Mac OSX
 package hvsock
 
 import (
