@@ -56,3 +56,9 @@ clean:
 fmt:
 	@echo "+ $@"
 	@gofmt -s -l . 2>&1 | grep -v ^vendor/ | xargs gofmt -s -l -w
+
+lint:
+	@echo "+ $@"
+	$(if $(shell which golint || echo ''), , \
+		$(error Please install golint))
+	@test -z "$$(golint ./... 2>&1 | grep -v ^vendor/ | grep -v mock/ | tee /dev/stderr)"
