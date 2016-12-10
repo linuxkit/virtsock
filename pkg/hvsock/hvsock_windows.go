@@ -19,22 +19,23 @@ func init() {
 }
 
 const (
-	AF_HYPERV     = 34
-	SHV_PROTO_RAW = 1
-	socket_error  = uintptr(^uint32(0))
+	sysAF_HYPERV     = 34
+	sysSHV_PROTO_RAW = 1
+
+	socket_error = uintptr(^uint32(0))
 )
 
 // struck sockaddr equivalent
 type rawSockaddrHyperv struct {
 	Family    uint16
 	Reserved  uint16
-	VmId      GUID
-	ServiceId GUID
+	VMID      GUID
+	ServiceID GUID
 }
 
 type hvsockListener struct {
-	accept_fd syscall.Handle
-	laddr     HypervAddr
+	acceptFD syscall.Handle
+	laddr    HypervAddr
 }
 
 // Internal representation. Complex mostly due to asynch send()/recv() syscalls.
@@ -87,13 +88,13 @@ func newHVsockConn(h syscall.Handle, local HypervAddr, remote HypervAddr) (*HVso
 
 // Utility function to build a struct sockaddr for syscalls.
 func (a HypervAddr) sockaddr(sa *rawSockaddrHyperv) (unsafe.Pointer, int32, error) {
-	sa.Family = AF_HYPERV
+	sa.Family = sysAF_HYPERV
 	sa.Reserved = 0
-	for i := 0; i < len(sa.VmId); i++ {
-		sa.VmId[i] = a.VmId[i]
+	for i := 0; i < len(sa.VMID); i++ {
+		sa.VMID[i] = a.VMID[i]
 	}
-	for i := 0; i < len(sa.ServiceId); i++ {
-		sa.ServiceId[i] = a.ServiceId[i]
+	for i := 0; i < len(sa.ServiceID); i++ {
+		sa.ServiceID[i] = a.ServiceID[i]
 	}
 
 	return unsafe.Pointer(sa), int32(unsafe.Sizeof(*sa)), nil
@@ -126,8 +127,8 @@ func accept(s syscall.Handle, a *HypervAddr) (syscall.Handle, error) {
 //
 // File IO/Socket interface
 //
-func (s *HVsockConn) close() error {
-	s.closeHandle()
+func (v *HVsockConn) close() error {
+	v.closeHandle()
 
 	return nil
 }
@@ -182,16 +183,19 @@ func (v *HVsockConn) write(buf []byte) (int, error) {
 	return v.asyncIo(c, v.writeDeadline, bytes, err)
 }
 
+// SetReadDeadline implementation for Hyper-V sockets
 func (v *HVsockConn) SetReadDeadline(t time.Time) error {
 	v.readDeadline = t
 	return nil
 }
 
+// SetWriteDeadline implementation for Hyper-V sockets
 func (v *HVsockConn) SetWriteDeadline(t time.Time) error {
 	v.writeDeadline = t
 	return nil
 }
 
+// SetDeadline implementation for Hyper-V sockets
 func (v *HVsockConn) SetDeadline(t time.Time) error {
 	v.SetReadDeadline(t)
 	v.SetWriteDeadline(t)
@@ -237,9 +241,9 @@ func (v *hvsockConn) closeHandle() {
 }
 
 // prepareIo prepares for a new IO operation
-func (s *hvsockConn) prepareIo() (*ioOperation, error) {
-	s.wg.Add(1)
-	if s.closing {
+func (v *hvsockConn) prepareIo() (*ioOperation, error) {
+	v.wg.Add(1)
+	if v.closing {
 		return nil, ErrSocketClosed
 	}
 	c := &ioOperation{}

@@ -40,7 +40,7 @@ const (
 	maxMsgSize = 4 * 1024 // Maximum message size
 )
 
-// Hypper-V sockets use GUIDs for addresses and "ports"
+// GUID is used by Hypper-V sockets for "addresses" and "ports"
 type GUID [16]byte
 
 // Convert a GUID into a string
@@ -54,8 +54,8 @@ func (g *GUID) String() string {
 		g[10], g[11], g[12], g[13], g[14], g[15])
 }
 
-// Parse a GUID string
-func GuidFromString(s string) (GUID, error) {
+// GUIDFromString parses a string and returns a GUID
+func GUIDFromString(s string) (GUID, error) {
 	var g GUID
 	var err error
 	_, err = fmt.Sscanf(s, "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
@@ -67,33 +67,43 @@ func GuidFromString(s string) (GUID, error) {
 	return g, err
 }
 
+// HypervAddr combined "address" and "port" structure
 type HypervAddr struct {
-	VmId      GUID
-	ServiceId GUID
+	VMID      GUID
+	ServiceID GUID
 }
 
+// Network returns the type of network for Hyper-V sockets
 func (a HypervAddr) Network() string { return "hvsock" }
 
 func (a HypervAddr) String() string {
-	vmid := a.VmId.String()
-	svc := a.ServiceId.String()
+	vmid := a.VMID.String()
+	svc := a.ServiceID.String()
 
 	return vmid + ":" + svc
 }
 
 var (
-	Debug = false // Set to True to enable additional debug output
+	// Debug enables additional debug output
+	Debug = false
 
-	GUID_ZERO, _      = GuidFromString("00000000-0000-0000-0000-000000000000")
-	GUID_WILDCARD, _  = GuidFromString("00000000-0000-0000-0000-000000000000")
-	GUID_BROADCAST, _ = GuidFromString("FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")
-	GUID_CHILDREN, _  = GuidFromString("90db8b89-0d35-4f79-8ce9-49ea0ac8b7cd")
-	GUID_LOOPBACK, _  = GuidFromString("e0e16197-dd56-4a10-9195-5ee7a155a838")
-	GUID_PARENT, _    = GuidFromString("a42e7cda-d03f-480c-9cc2-a4de20abb878")
+	// GUIDZero used by listeners to accept connections from all partitions
+	GUIDZero, _ = GUIDFromString("00000000-0000-0000-0000-000000000000")
+	// GUIDWildcard used by listeners to accept connections from all partitions
+	GUIDWildcard, _ = GUIDFromString("00000000-0000-0000-0000-000000000000")
+	// GUIDBroadcast undocumented
+	GUIDBroadcast, _ = GUIDFromString("FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")
+	// GUIDChildren used by listeners to accept connections from children
+	GUIDChildren, _ = GUIDFromString("90db8b89-0d35-4f79-8ce9-49ea0ac8b7cd")
+	// GUIDLoopback use to connect in loopback mode
+	GUIDLoopback, _ = GUIDFromString("e0e16197-dd56-4a10-9195-5ee7a155a838")
+	// GUIDParent use to connect to the parent partition
+	GUIDParent, _ = GUIDFromString("a42e7cda-d03f-480c-9cc2-a4de20abb878")
 )
 
+// Dial a Hyper-V socket address
 func Dial(raddr HypervAddr) (Conn, error) {
-	fd, err := syscall.Socket(AF_HYPERV, syscall.SOCK_STREAM, SHV_PROTO_RAW)
+	fd, err := syscall.Socket(sysAF_HYPERV, syscall.SOCK_STREAM, sysSHV_PROTO_RAW)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +113,7 @@ func Dial(raddr HypervAddr) (Conn, error) {
 		return nil, err
 	}
 
-	v, err := newHVsockConn(fd, HypervAddr{VmId: GUID_ZERO, ServiceId: GUID_ZERO}, raddr)
+	v, err := newHVsockConn(fd, HypervAddr{VMID: GUIDZero, ServiceID: GUIDZero}, raddr)
 	if err != nil {
 		return nil, err
 	}
@@ -111,24 +121,25 @@ func Dial(raddr HypervAddr) (Conn, error) {
 	return v, nil
 }
 
+// Listen on a Hyper-V socket address
 func Listen(addr HypervAddr) (net.Listener, error) {
 
-	accept_fd, err := syscall.Socket(AF_HYPERV, syscall.SOCK_STREAM, SHV_PROTO_RAW)
+	acceptFD, err := syscall.Socket(sysAF_HYPERV, syscall.SOCK_STREAM, sysSHV_PROTO_RAW)
 	if err != nil {
 		return nil, err
 	}
 
-	err = bind(accept_fd, addr)
+	err = bind(acceptFD, addr)
 	if err != nil {
 		return nil, err
 	}
 
-	err = syscall.Listen(accept_fd, syscall.SOMAXCONN)
+	err = syscall.Listen(acceptFD, syscall.SOMAXCONN)
 	if err != nil {
 		return nil, err
 	}
 
-	return &hvsockListener{accept_fd, addr}, nil
+	return &hvsockListener{acceptFD, addr}, nil
 }
 
 const (
@@ -137,7 +148,7 @@ const (
 	closemsg   = 0xdeaddead // Message for Close()
 )
 
-// Conn is a hvsock connection which support half-close.
+// Conn is a hvsock connection which supports half-close.
 type Conn interface {
 	net.Conn
 	CloseRead() error
@@ -146,7 +157,7 @@ type Conn interface {
 
 func (v *hvsockListener) Accept() (net.Conn, error) {
 	var raddr HypervAddr
-	fd, err := accept(v.accept_fd, &raddr)
+	fd, err := accept(v.acceptFD, &raddr)
 	if err != nil {
 		return nil, err
 	}
@@ -161,11 +172,11 @@ func (v *hvsockListener) Accept() (net.Conn, error) {
 
 func (v *hvsockListener) Close() error {
 	// Note this won't cause the Accept to unblock.
-	return syscall.Close(v.accept_fd)
+	return syscall.Close(v.acceptFD)
 }
 
 func (v *hvsockListener) Addr() net.Addr {
-	return HypervAddr{VmId: v.laddr.VmId, ServiceId: v.laddr.ServiceId}
+	return HypervAddr{VMID: v.laddr.VMID, ServiceID: v.laddr.ServiceID}
 }
 
 /*
@@ -173,15 +184,23 @@ func (v *hvsockListener) Addr() net.Addr {
  */
 
 var (
-	ErrSocketClosed        = errors.New("HvSocket has already been closed")
-	ErrSocketWriteClosed   = errors.New("HvSocket has been closed for write")
-	ErrSocketReadClosed    = errors.New("HvSocket has been closed for read")
-	ErrSocketMsgSize       = errors.New("HvSocket message was of wrong size")
-	ErrSocketMsgWrite      = errors.New("HvSocket writing message")
+	// ErrSocketClosed is returned when an operation is attempted on a socket which has been closed
+	ErrSocketClosed = errors.New("HvSocket has already been closed")
+	// ErrSocketWriteClosed is returned on a write when the socket has been closed for write
+	ErrSocketWriteClosed = errors.New("HvSocket has been closed for write")
+	// ErrSocketReadClosed is returned on a write when the socket has been closed for read
+	ErrSocketReadClosed = errors.New("HvSocket has been closed for read")
+	// ErrSocketMsgSize is returned a message has the wrong size
+	ErrSocketMsgSize = errors.New("HvSocket message was of wrong size")
+	// ErrSocketMsgWrite is returned when a message write failed
+	ErrSocketMsgWrite = errors.New("HvSocket writing message")
+	// ErrSocketNotEnoughData is returned when not all data could be written
 	ErrSocketNotEnoughData = errors.New("HvSocket not enough data written")
+	// ErrSocketUnImplemented is returned a function is not implemented
 	ErrSocketUnImplemented = errors.New("Function not implemented")
 )
 
+// HVsockConn maintains the state of a Hyper-V socket connection
 type HVsockConn struct {
 	hvsockConn
 
@@ -193,14 +212,17 @@ type HVsockConn struct {
 	bytesToRead int
 }
 
+// LocalAddr returns the local address of the Hyper-V socket connection
 func (v *HVsockConn) LocalAddr() net.Addr {
 	return v.local
 }
 
+// RemoteAddr returns the remote address of the Hyper-V socket connection
 func (v *HVsockConn) RemoteAddr() net.Addr {
 	return v.remote
 }
 
+// Close closes a Hyper-V connection
 func (v *HVsockConn) Close() error {
 	prDebug("Close\n")
 
@@ -225,6 +247,7 @@ func (v *HVsockConn) Close() error {
 	return v.close()
 }
 
+// CloseRead closes a Hyper-V connection for reading
 func (v *HVsockConn) CloseRead() error {
 	if v.readClosed {
 		return ErrSocketReadClosed
@@ -242,6 +265,7 @@ func (v *HVsockConn) CloseRead() error {
 	return nil
 }
 
+// CloseWrite closes a Hyper-V connection for writing
 func (v *HVsockConn) CloseWrite() error {
 	if v.writeClosed {
 		return ErrSocketWriteClosed
@@ -266,8 +290,8 @@ func min(a, b int) int {
 	return b
 }
 
-// Read into buffer. This function turns a stream interface into
-// messages and also handles the inband control messages.
+// Read into buffer
+// Also handles the inband control messages.
 func (v *HVsockConn) Read(buf []byte) (int, error) {
 	if v.readClosed {
 		return 0, io.EOF
@@ -331,6 +355,7 @@ func (v *HVsockConn) Read(buf []byte) (int, error) {
 	return n, nil
 }
 
+// Write a buffer
 func (v *HVsockConn) Write(buf []byte) (int, error) {
 	if v.writeClosed {
 		return 0, ErrSocketWriteClosed

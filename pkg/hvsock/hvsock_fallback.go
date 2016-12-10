@@ -1,6 +1,5 @@
 // +build !linux,!windows
 
-// Dummy implementation to compile on Mac OSX
 package hvsock
 
 import (
@@ -9,13 +8,13 @@ import (
 )
 
 const (
-	AF_HYPERV     = 42
-	SHV_PROTO_RAW = 1
+	sysAF_HYPERV     = 42
+	sysSHV_PROTO_RAW = 1
 )
 
 type hvsockListener struct {
-	accept_fd int
-	laddr     HypervAddr
+	acceptFD int
+	laddr    HypervAddr
 }
 
 //
@@ -33,14 +32,12 @@ func accept(s int, a *HypervAddr) (int, error) {
 	return 0, errors.New("accept() not implemented")
 }
 
-// Internal representation. Complex mostly due to asynch send()/recv() syscalls.
 type hvsockConn struct {
 	fd     int
 	local  HypervAddr
 	remote HypervAddr
 }
 
-// Main constructor
 func newHVsockConn(fd int, local HypervAddr, remote HypervAddr) (*HVsockConn, error) {
 	v := &hvsockConn{local: local, remote: remote}
 	return &HVsockConn{hvsockConn: *v}, errors.New("newHVsockConn() not implemented")
@@ -58,14 +55,17 @@ func (v *HVsockConn) write(buf []byte) (int, error) {
 	return 0, errors.New("write() not implemented")
 }
 
+// SetReadDeadline dummy doc to silence lint
 func (v *HVsockConn) SetReadDeadline(t time.Time) error {
 	return nil // FIXME
 }
 
+// SetWriteDeadline dummy doc to silence lint
 func (v *HVsockConn) SetWriteDeadline(t time.Time) error {
 	return nil // FIXME
 }
 
+// SetDeadline dummy doc to silence lint
 func (v *HVsockConn) SetDeadline(t time.Time) error {
 	return nil // FIXME
 }
