@@ -30,13 +30,13 @@ import (
 )
 
 const (
-	AF_HYPERV     = 43
-	SHV_PROTO_RAW = 1
+	sysAF_HYPERV     = 43
+	sysSHV_PROTO_RAW = 1
 )
 
 type hvsockListener struct {
-	accept_fd int
-	laddr     HypervAddr
+	acceptFD int
+	laddr    HypervAddr
 }
 
 //
@@ -44,14 +44,14 @@ type hvsockListener struct {
 //
 func connect(s int, a *HypervAddr) (err error) {
 	sa := C.struct_sockaddr_hv{}
-	sa.shv_family = AF_HYPERV
+	sa.shv_family = sysAF_HYPERV
 	sa.reserved = 0
 
 	for i := 0; i < 16; i++ {
-		sa.shv_vm_id[i] = C.uchar(a.VmId[i])
+		sa.shv_vm_id[i] = C.uchar(a.VMID[i])
 	}
 	for i := 0; i < 16; i++ {
-		sa.shv_service_id[i] = C.uchar(a.ServiceId[i])
+		sa.shv_service_id[i] = C.uchar(a.ServiceID[i])
 	}
 
 	if ret := C.connect_sockaddr_hv(C.int(s), &sa); ret != 0 {
@@ -63,16 +63,16 @@ func connect(s int, a *HypervAddr) (err error) {
 
 func bind(s int, a HypervAddr) error {
 	sa := C.struct_sockaddr_hv{}
-	sa.shv_family = AF_HYPERV
+	sa.shv_family = sysAF_HYPERV
 	sa.reserved = 0
 
 	for i := 0; i < 16; i++ {
 		// XXX this should take the address from `a` but Linux
-		// currently only support 0s
-		sa.shv_vm_id[i] = C.uchar(GUID_ZERO[i])
+		// currently only supports 0s
+		sa.shv_vm_id[i] = C.uchar(GUIDZero[i])
 	}
 	for i := 0; i < 16; i++ {
-		sa.shv_service_id[i] = C.uchar(a.ServiceId[i])
+		sa.shv_service_id[i] = C.uchar(a.ServiceID[i])
 	}
 
 	if ret := C.bind_sockaddr_hv(C.int(s), &sa); ret != 0 {
@@ -83,17 +83,17 @@ func bind(s int, a HypervAddr) error {
 }
 
 func accept(s int, a *HypervAddr) (int, error) {
-	var accept_sa C.struct_sockaddr_hv
-	var accept_sa_len C.socklen_t
+	var acceptSA C.struct_sockaddr_hv
+	var acceptSALen C.socklen_t
 
-	accept_sa_len = C.sizeof_struct_sockaddr_hv
-	fd, err := C.accept_hv(C.int(s), &accept_sa, &accept_sa_len)
+	acceptSALen = C.sizeof_struct_sockaddr_hv
+	fd, err := C.accept_hv(C.int(s), &acceptSA, &acceptSALen)
 	if err != nil {
 		return -1, err
 	}
 
-	a.VmId = guidFromC(accept_sa.shv_vm_id)
-	a.ServiceId = guidFromC(accept_sa.shv_service_id)
+	a.VMID = guidFromC(acceptSA.shv_vm_id)
+	a.ServiceID = guidFromC(acceptSA.shv_service_id)
 
 	return int(fd), nil
 }
@@ -126,14 +126,17 @@ func (v *HVsockConn) write(buf []byte) (int, error) {
 	return v.hvsock.Write(buf)
 }
 
+// SetReadDeadline is un-implemented
 func (v *HVsockConn) SetReadDeadline(t time.Time) error {
 	return nil // FIXME
 }
 
+// SetWriteDeadline is un-implemented
 func (v *HVsockConn) SetWriteDeadline(t time.Time) error {
 	return nil // FIXME
 }
 
+// SetDeadline is un-implemented
 func (v *HVsockConn) SetDeadline(t time.Time) error {
 	return nil // FIXME
 }

@@ -1,0 +1,16 @@
+FROM golang:1.7.1-alpine
+
+# A container to build the sample Go code
+
+RUN apk add --update build-base
+
+ENV GOPATH=/go
+ENV PATH=/go/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# The project sources
+ADD ./ /go/src/github.com/rneugeba/virtsock
+WORKDIR /go/src/github.com/rneugeba/virtsock
+
+VOLUME [ "/go/src/github.com/rneugeba/virtsock/build" ]
+
+CMD make build-binaries

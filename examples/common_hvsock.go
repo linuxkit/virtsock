@@ -5,11 +5,11 @@ import (
 	"net"
 	"strings"
 
-	"../hvsock"
+	"github.com/rneugeba/virtsock/pkg/hvsock"
 )
 
 var (
-	svcid, _ = hvsock.GuidFromString("3049197C-9A4E-4FBF-9367-97F792F16994")
+	svcid, _ = hvsock.GUIDFromString("3049197C-9A4E-4FBF-9367-97F792F16994")
 )
 
 func HvsockSetVerbosity() {
@@ -23,17 +23,17 @@ type hvsockClient struct {
 }
 
 func HvsockParseClientStr(clientStr string) hvsockClient {
-	vmid := hvsock.GUID_ZERO
+	vmid := hvsock.GUIDZero
 	var err error
 	if strings.Contains(clientStr, "-") {
-		vmid, err = hvsock.GuidFromString(clientStr)
+		vmid, err = hvsock.GUIDFromString(clientStr)
 		if err != nil {
 			log.Fatalln("Can't parse GUID: ", clientStr)
 		}
 	} else if clientStr == "parent" {
-		vmid = hvsock.GUID_PARENT
+		vmid = hvsock.GUIDParent
 	} else {
-		vmid = hvsock.GUID_LOOPBACK
+		vmid = hvsock.GUIDLoopback
 	}
 
 	return hvsockClient{vmid}
@@ -44,12 +44,12 @@ func (cl hvsockClient) String() string {
 }
 
 func (cl hvsockClient) Dial(conid int) (Conn, error) {
-	sa := hvsock.HypervAddr{VmId: cl.vmid, ServiceId: svcid}
+	sa := hvsock.HypervAddr{VMID: cl.vmid, ServiceID: svcid}
 	return hvsock.Dial(sa)
 }
 
 func HvsockServerListen() net.Listener {
-	l, err := hvsock.Listen(hvsock.HypervAddr{VmId: hvsock.GUID_WILDCARD, ServiceId: svcid})
+	l, err := hvsock.Listen(hvsock.HypervAddr{VMID: hvsock.GUIDWildcard, ServiceID: svcid})
 	if err != nil {
 		log.Fatalln("Listen():", err)
 	}
