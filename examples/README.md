@@ -5,7 +5,9 @@ _Note:_ `hvgoecho` can be substituted for `hvgostress` mostly as is
 
 ## Windows
 
-TBD
+Under Windows, we assume Docker for Windows is installed since this ships with a suitably patched Linux kernel (though the tests can also be run to a Windows VM).  Currently, there is also the restriction that one can only connect from the host to the (Linux) VM.
+
+Build a Linux container with the test program as shown below.
 
 ## Linux
 
@@ -44,7 +46,15 @@ Docker for Mac. This is the default but can be given explicitly with:
 
 ## Linux & Docker for Windows
 
-TBD
+Start the linux container with program in server mode:
+
+    PS> docker run -it --rm --net=host --privileged stress -s
+
+The start the client in a separate powershell window:
+
+    PS> $vmId = (Get-VM MobyLinuxVM).Id
+    PS> .\hvgostress.exe -c $vmId
+    
 
 ## Linux & Docker for Mac
 
