@@ -267,8 +267,8 @@ static inline int poll(struct pollfd fds[], unsigned long nfds, int timeout)
 #endif
 
 /* Connect with timeout (in milliseconds), different to WinSock ConnectEx() */
-static int connect_ex(int s,
-                      const struct sockaddr *sa, socklen_t len, int timeout)
+static inline int connect_ex(int s, const struct sockaddr *sa,
+                             socklen_t len, int timeout)
 {
     struct timeval tv;
     fd_set fdset;
