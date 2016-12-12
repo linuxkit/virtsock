@@ -17,7 +17,30 @@ DEFINE_GUID(MY_SERVICE_GUID,
 
 #define SVR_BUF_LEN (3 * 4096)
 #define MAX_BUF_LEN (2 * 1024 * 1024)
+#define DEFAULT_CLIENT_CONN 100
 
+static int verbose;
+#define INFO(...)                                                       \
+    do {                                                                \
+        if (verbose) {                                                  \
+            printf(__VA_ARGS__);                                        \
+            fflush(stdout);                                             \
+        }                                                               \
+    } while (0)
+#define DBG(...)                                                        \
+    do {                                                                \
+        if (verbose > 1) {                                              \
+            printf(__VA_ARGS__);                                        \
+            fflush(stdout);                                             \
+        }                                                               \
+    } while (0)
+#define TRC(...)                                                        \
+    do {                                                                \
+        if (verbose > 2) {                                              \
+            printf(__VA_ARGS__);                                        \
+            fflush(stdout);                                             \
+        }                                                               \
+    } while (0)
 
 #ifdef _MSC_VER
 static WSADATA wsaData;
@@ -32,8 +55,9 @@ struct client_args {
 /* Handle a connection. Echo back anything sent to us and when the
  * connection is closed send a bye message.
  */
-static void handle(SOCKET fd)
+static void *handle(void *a)
 {
+    SOCKET fd = *(SOCKET *)a;
     char recvbuf[SVR_BUF_LEN];
     int recvbuflen = SVR_BUF_LEN;
     int total_bytes = 0;
@@ -41,36 +65,36 @@ static void handle(SOCKET fd)
     int sent;
     int res;
 
+    TRC("server thread: Handle fd=%d\n", (int)fd);
+
     for (;;) {
         received = recv(fd, recvbuf, recvbuflen, 0);
         if (received == 0) {
-            printf("Peer closed\n");
+            DBG("Peer closed\n");
             break;
         } else if (received == SOCKET_ERROR) {
             sockerr("recv()");
-            return;
+            goto out;
         }
-
-        /* No error, echo */
-        /* printf("RX: %d Bytes\n", received); */
 
         sent = 0;
         while (sent < received) {
             res = send(fd, recvbuf + sent, received - sent, 0);
             if (res == SOCKET_ERROR) {
                 sockerr("send()");
-                return;
+                goto out;
             }
-            /* printf("TX: %d Bytes\n", res); */
             sent += res;
         }
         total_bytes += sent;
     }
 
-    printf("ECHO: %d Bytes\n", total_bytes);
-
-    /* Dummy read to wait till other end closes */
-    recv(fd, recvbuf, recvbuflen, 0);
+out:
+    INFO("ECHOED: %d Bytes\n", total_bytes);
+    free(a);
+    TRC("close(%d)\n", (int)fd);
+    closesocket(fd);
+    return NULL;
 }
 
 
@@ -79,9 +103,10 @@ static void handle(SOCKET fd)
  */
 static int server(void)
 {
-    SOCKET lsock, csock;
+    SOCKET lsock, csock, *sp;
     SOCKADDR_HV sa, sac;
     socklen_t socklen = sizeof(sac);
+    THREAD_HANDLE st;
     int res;
 
     lsock = socket(AF_HYPERV, SOCK_STREAM, HV_PROTOCOL_RAW);
@@ -117,11 +142,16 @@ static int server(void)
             return 1;
         }
 
-        printf("Connect from: "GUID_FMT":"GUID_FMT"\n",
-               GUID_ARGS(sac.VmId), GUID_ARGS(sac.ServiceId));
+        DBG("Connect from: "GUID_FMT":"GUID_FMT" fd=%d\n",
+            GUID_ARGS(sac.VmId), GUID_ARGS(sac.ServiceId), (int)csock);
 
-        handle(csock);
-        closesocket(csock);
+        /* Spin up a new thread per connection. Not the most
+         * efficient, but stops us from having to faff about with
+         * worker threads and the like. */
+        sp = malloc(sizeof(*sp));
+        *sp = csock;
+        thread_create(&st, &handle, sp);
+        thread_detach(st);
     }
 }
 
@@ -131,30 +161,36 @@ static int server(void)
  * It sends garbage (ie whatever happens to be in memory. It mixes
  * larger with smaller send requests just because we can.
  */
+#if _MSC_VER
+/* XXX On Windows, calling send with 32K causes the connection being
+ * closed!!!  The MSDN pages for send() is ambiguous about this. We
+ * could use getsockopt(SO_MAX_MSG_SIZE) to query the size, but
+ * instead hard code this value to 8k. */
+#define MAX_SND_BUF (8 * 1024)
+#else
 #define MAX_SND_BUF (32 * 1024)
+#endif
 static void *client_send(void *a)
 {
     char sendbuf[MAX_SND_BUF];
+    char tmp[128];
     struct client_args *args = a;
     int tosend, this_batch;
     int res;
 
     tosend = args->tosend;
-    this_batch = 4;
     while (tosend) {
+        this_batch = (tosend >  MAX_SND_BUF) ? MAX_SND_BUF : tosend;
         res = send(args->fd, sendbuf, this_batch, 0);
         if (res == SOCKET_ERROR) {
-            sockerr("send()");
+            snprintf(tmp, sizeof(tmp), "send() after %d bytes",
+                     args->tosend - tosend);
+            sockerr(tmp);
             goto out;
         }
         tosend -= res;
-        if (this_batch == 4)
-            this_batch = (tosend >  MAX_SND_BUF) ? MAX_SND_BUF : tosend;
-        else
-            this_batch = 4;
-
     }
-    printf("TX: %d bytes sent\n", res);
+    DBG("TX: %d bytes sent\n", args->tosend);
 
 out:
     return NULL;
@@ -170,6 +206,7 @@ static int client(GUID target)
     THREAD_HANDLE st;
     struct client_args args;
     char *recvbuf;
+    char tmp[128];
     int tosend, received = 0;
     int res;
 
@@ -191,22 +228,25 @@ static int client(GUID target)
     sa.VmId = target;
     sa.ServiceId = MY_SERVICE_GUID;
 
-    printf("Connect to: "GUID_FMT":"GUID_FMT"\n",
-           GUID_ARGS(sa.VmId), GUID_ARGS(sa.ServiceId));
+    TRC("Connect to: "GUID_FMT":"GUID_FMT"\n",
+        GUID_ARGS(sa.VmId), GUID_ARGS(sa.ServiceId));
 
     res = connect(fd, (const struct sockaddr *)&sa, sizeof(sa));
     if (res == SOCKET_ERROR) {
         sockerr("connect()");
         goto out;
     }
+    DBG("Connected to: "GUID_FMT":"GUID_FMT" fd=%d\n",
+        GUID_ARGS(sa.VmId), GUID_ARGS(sa.ServiceId), (int)fd);
 
     tosend = rand();
     if (RAND_MAX < MAX_BUF_LEN)
-        tosend = (int)((double)tosend / ((long long)RAND_MAX + 1) *  (MAX_BUF_LEN - 1) + 1);
+        tosend = (int)((double)tosend / 
+                       ((long long)RAND_MAX + 1) *  (MAX_BUF_LEN - 1) + 1);
     else
         tosend = tosend % (MAX_BUF_LEN - 1) + 1;
 
-    printf("TX: %d bytes\n", tosend);
+    DBG("TOSEND: %d bytes\n", tosend);
     args.fd = fd;
     args.tosend = tosend;
     thread_create(&st, &client_send, &args);
@@ -214,20 +254,23 @@ static int client(GUID target)
     while (received < tosend) {
         res = recv(fd, recvbuf, MAX_BUF_LEN, 0);
         if (res < 0) {
-            sockerr("recv()");
-            goto out;
+            snprintf(tmp, sizeof(tmp), "recv() after %d bytes", received);
+            sockerr(tmp);
+            goto thout;
         } else if (res == 0) {
-            printf("Connection closed\n");
+            INFO("Connection closed\n");
             res = 1;
-            goto out;
+            goto thout;
         }
-        /* printf("RX: %d bytes\n", res); */
         received += res;
     }
-    printf("RX: %d bytes\n", received);
+    INFO("RX: %d bytes received\n", received);
     res = 0;
 
- out:
+thout:
+    thread_join(st);
+out:
+    TRC("close(%d)\n", (int)fd);
     closesocket(fd);
     free(recvbuf);
     return res;
@@ -235,21 +278,28 @@ static int client(GUID target)
 
 void usage(char *name)
 {
-    printf("%s: -s | -c <carg>\n", name);
-    printf("In client mode <carg>:\n");
-    printf("<empty>:  Connect in loopback mode\n");
-    printf("'parent': Connect to the parent partition\n");
-    printf("<guid>:   Connect to VM with GUID\n");
+    printf("%s: -s|-c <carg> [-i <conns>]\n", name);
+    printf(" -s         Server mode\n");
+    printf(" -c <carg>  Client mode. <carg>:\n");
+    printf("   'loopback': Connect in loopback mode\n");
+    printf("   'parent':   Connect to the parent partition\n");
+    printf("   <guid>:     Connect to VM with GUID\n");
+    printf(" -i <conns> Number connections the client makes (default %d)\n",
+           DEFAULT_CLIENT_CONN);
+    printf(" -r         Initialise random number generator with the time\n");
+    printf(" -v         Verbose output\n");
 }
 
 int __cdecl main(int argc, char **argv)
 {
-    int res = 0;
+    int opt_server = 0;
+    int opt_conns = DEFAULT_CLIENT_CONN;
     GUID target;
+    int res = 0;
     int i;
 
 #ifdef _MSC_VER
-    // Initialize Winsock
+    /* Initialize Winsock */
     res = WSAStartup(MAKEWORD(2,2), &wsaData);
     if (res != 0) {
         fprintf(stderr, "WSAStartup() failed with error: %d\n", res);
@@ -257,36 +307,56 @@ int __cdecl main(int argc, char **argv)
     }
 #endif
 
-    if (argc < 2 || argc > 3 || strcmp(argv[1], "-l") == 0) {
-        usage(argv[0]);
-        goto out;
-    }
-
-    if (strcmp(argv[1], "-s") == 0) {
-        res = server();
-    } else if (strcmp(argv[1], "-c") == 0) {
-        if (argc == 2) {
-            target = HV_GUID_LOOPBACK;
-        } else if (strcmp(argv[1], "parent") == 0) {
-            target = HV_GUID_PARENT;
-        } else {
-            res = parseguid(argv[2], &target);
-            if (res != 0) {
-                fprintf(stderr, "failed to scan: %s\n", argv[2]);
+    /* No getopt on windows. Do some manual parsing */
+    for (i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-s") == 0) {
+            opt_server = 1;
+        } else if (strcmp(argv[i], "-c") == 0) {
+            opt_server = 0;
+            if (i + 1 >= argc) {
+                fprintf(stderr, "-c requires an argument\n");
+                usage(argv[0]);
                 goto out;
             }
-        }
+            if (strcmp(argv[i + 1], "loopback") == 0) {
+                target = HV_GUID_LOOPBACK;
+            } else if (strcmp(argv[i + 1], "parent") == 0) {
+                target = HV_GUID_PARENT;
+            } else {
+                res = parseguid(argv[i + 1], &target);
+                if (res != 0) {
+                    fprintf(stderr, "failed to scan: %s\n", argv[i + 1]);
+                    goto out;
+                }
+            }
+            i++;
 
-        for (i = 0; i < 100; i++) {
-            printf ("TEST: %d\n", i);
+        } else if (strcmp(argv[i], "-i") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "-i requires an argument\n");
+                usage(argv[0]);
+                goto out;
+            }
+            opt_conns = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-r") == 0) {
+            srand(time(NULL));
+        } else if (strcmp(argv[i], "-v") == 0) {
+            verbose++;
+        } else {
+            usage(argv[0]);
+            goto out;
+        }
+    }
+
+    if (opt_server)
+        server();
+    else
+        for (i = 0; i < opt_conns; i++) {
+            INFO("TEST: %d\n", i);
             res = client(target);
             if (res)
                 break;
         }
-    } else {
-        usage(argv[0]);
-        res = 1;
-    }
 
 out:
 #ifdef _MSC_VER
