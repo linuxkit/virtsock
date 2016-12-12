@@ -1,8 +1,8 @@
 
 # Data and output files
-xps_build = "14971"
-xps_4_4 = "dellxps-".xps_build."-4.4.30.dat"
-xps_4_8 = "dellxps-".xps_build."-4.8.10.dat"
+xps_build = "14986"
+xps_4_4 = "dellxps-14971-4.4.30.dat"
+xps_4_8 = "dellxps-".xps_build."-4.8.12.dat"
 xps_pre = "dellxps-".xps_build.""
 
 nuc0_build = "14393"
