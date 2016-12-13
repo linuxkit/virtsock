@@ -46,12 +46,6 @@ static int verbose;
 static WSADATA wsaData;
 #endif
 
-/* Argument passed to Client send thread */
-struct client_args {
-    SOCKET fd;
-    int tosend;
-};
-
 /* Handle a connection. Echo back anything sent to us and when the
  * connection is closed send a bye message.
  */
@@ -156,11 +150,22 @@ static int server(void)
 }
 
 
-/* Client send function, executed in a different thread
+/* Client code
  *
- * It sends garbage (ie whatever happens to be in memory. It mixes
- * larger with smaller send requests just because we can.
+ * The client sends one message of random size and expects the server
+ * to echo it back. The sending is done in a separate thread so we can
+ * simultaneously drain the server's replies.  Could do this in a
+ * single thread with poll()/select() as well, but this keeps the code
+ * simpler.
  */
+
+/* Argument passed to Client send thread */
+struct client_tx_args {
+    SOCKET fd;
+    int tosend;
+};
+
+
 #if _MSC_VER
 /* XXX On Windows, calling send with 32K causes the connection being
  * closed!!!  The MSDN pages for send() is ambiguous about this. We
@@ -170,11 +175,11 @@ static int server(void)
 #else
 #define MAX_SND_BUF (32 * 1024)
 #endif
-static void *client_send(void *a)
+static void *client_tx(void *a)
 {
+    struct client_tx_args *args = a;
     char sendbuf[MAX_SND_BUF];
     char tmp[128];
-    struct client_args *args = a;
     int tosend, this_batch;
     int res;
 
@@ -196,15 +201,13 @@ out:
     return NULL;
 }
 
-/* The client sends a messages, and waits for the echo before shutting
- * down the send side. It then expects a bye message from the server.
- */
-static int client(GUID target)
+/* Client code for a single connection */
+static int client_one(GUID target)
 {
-    SOCKET fd;
-    SOCKADDR_HV sa;
+    struct client_tx_args args;
     THREAD_HANDLE st;
-    struct client_args args;
+    SOCKADDR_HV sa;
+    SOCKET fd;
     char *recvbuf;
     char tmp[128];
     int tosend, received = 0;
@@ -249,7 +252,7 @@ static int client(GUID target)
     DBG("TOSEND: %d bytes\n", tosend);
     args.fd = fd;
     args.tosend = tosend;
-    thread_create(&st, &client_send, &args);
+    thread_create(&st, &client_tx, &args);
 
     while (received < tosend) {
         res = recv(fd, recvbuf, MAX_BUF_LEN, 0);
@@ -353,7 +356,7 @@ int __cdecl main(int argc, char **argv)
     else
         for (i = 0; i < opt_conns; i++) {
             INFO("TEST: %d\n", i);
-            res = client(target);
+            res = client_one(target);
             if (res)
                 break;
         }
