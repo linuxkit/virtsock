@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"hash"
@@ -145,16 +144,6 @@ func handleRequest(c net.Conn, connid int) {
 	if n == 0 {
 		return
 	}
-
-	prDebug("[%05d] Sending BYE message\n", connid)
-
-	// The '\n' is important as the client use ReadString()
-	_, err = fmt.Fprintf(c, "Got %d bytes. Bye\n", n)
-	if err != nil {
-		prError("[%05d] Failed to send: %s", connid, err)
-		return
-	}
-	prDebug("[%05d] Sent bye\n", connid)
 }
 
 func parClient(wg *sync.WaitGroup, cl Client) {
@@ -313,13 +302,6 @@ func client(cl Client, conid int) {
 	if csum0 != csum1 {
 		prError("[%05d] Checksums don't match", conid)
 	}
-
-	// Wait for Bye message
-	message, err := bufio.NewReader(c).ReadString('\n')
-	if err != nil {
-		prError("[%05d] Failed to receive bye: %s\n", conid, err)
-	}
-	prDebug("[%05d] From SVR: %s", conid, message)
 }
 
 func randBuf(n int) []byte {
