@@ -120,6 +120,10 @@ static inline int thread_join(THREAD_HANDLE t)
     return 0;
 }
 
+static inline int thread_detach(THREAD_HANDLE t)
+{
+    return CloseHandle(t);
+}
 #else
 #include <pthread.h>
 
@@ -133,6 +137,11 @@ static inline int thread_create(THREAD_HANDLE *t, void *(*f)(void *), void *arg)
 static inline int thread_join(THREAD_HANDLE t)
 {
     return pthread_join(t, NULL);
+}
+
+static inline int thread_detach(THREAD_HANDLE t)
+{
+    return pthread_detach(t);
 }
 #endif
 
@@ -149,6 +158,13 @@ static inline uint64_t time_ns(void)
     t.QuadPart *= 1000000000;
     return (uint64_t)t.QuadPart / freq.QuadPart;
 }
+
+static inline unsigned int sleep(unsigned int sec)
+{
+    Sleep(sec * 1000);
+    return 0;
+}
+
 #else
 static inline uint64_t time_ns(void)
 {
@@ -267,8 +283,8 @@ static inline int poll(struct pollfd fds[], unsigned long nfds, int timeout)
 #endif
 
 /* Connect with timeout (in milliseconds), different to WinSock ConnectEx() */
-static int connect_ex(int s,
-                      const struct sockaddr *sa, socklen_t len, int timeout)
+static inline int connect_ex(int s, const struct sockaddr *sa,
+                             socklen_t len, int timeout)
 {
     struct timeval tv;
     fd_set fdset;
