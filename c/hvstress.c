@@ -159,10 +159,22 @@ static int server(void)
  * simpler.
  */
 
+/* Arguments for client threads */
+struct client_args {
+    THREAD_HANDLE h;
+    GUID target;
+    int id;
+    int conns;
+
+    int res;
+};
+
 /* Argument passed to Client send thread */
 struct client_tx_args {
     SOCKET fd;
     int tosend;
+    int id;
+    int conn;
 };
 
 
@@ -188,21 +200,21 @@ static void *client_tx(void *a)
         this_batch = (tosend >  MAX_SND_BUF) ? MAX_SND_BUF : tosend;
         res = send(args->fd, sendbuf, this_batch, 0);
         if (res == SOCKET_ERROR) {
-            snprintf(tmp, sizeof(tmp), "send() after %d bytes",
-                     args->tosend - tosend);
+            snprintf(tmp, sizeof(tmp), "[%02d:%05d] send() after %d bytes",
+                     args->id, args->conn, args->tosend - tosend);
             sockerr(tmp);
             goto out;
         }
         tosend -= res;
     }
-    DBG("TX: %d bytes sent\n", args->tosend);
+    DBG("[%02d:%05d] TX: %d bytes sent\n", args->id, args->conn, args->tosend);
 
 out:
     return NULL;
 }
 
 /* Client code for a single connection */
-static int client_one(GUID target)
+static int client_one(GUID target, int id, int conn)
 {
     struct client_tx_args args;
     THREAD_HANDLE st;
@@ -213,9 +225,11 @@ static int client_one(GUID target)
     int tosend, received = 0;
     int res;
 
+    TRC("[%02d:%05d] start\n", id, conn);
+
     recvbuf = malloc(MAX_BUF_LEN);
     if (!recvbuf) {
-        fprintf(stderr, "Failed to allocate recvbuf\n");
+        fprintf(stderr, "[%02d:%05d] Failed to allocate recvbuf\n", id, conn);
         return 1;
     }
 
@@ -231,52 +245,70 @@ static int client_one(GUID target)
     sa.VmId = target;
     sa.ServiceId = MY_SERVICE_GUID;
 
-    TRC("Connect to: "GUID_FMT":"GUID_FMT"\n",
-        GUID_ARGS(sa.VmId), GUID_ARGS(sa.ServiceId));
+    TRC("[%02d:%05d] Connect to: "GUID_FMT":"GUID_FMT"\n",
+        id, conn, GUID_ARGS(sa.VmId), GUID_ARGS(sa.ServiceId));
 
     res = connect(fd, (const struct sockaddr *)&sa, sizeof(sa));
     if (res == SOCKET_ERROR) {
         sockerr("connect()");
         goto out;
     }
-    DBG("Connected to: "GUID_FMT":"GUID_FMT" fd=%d\n",
-        GUID_ARGS(sa.VmId), GUID_ARGS(sa.ServiceId), (int)fd);
+    DBG("[%02d:%05d] Connected to: "GUID_FMT":"GUID_FMT" fd=%d\n",
+        id, conn, GUID_ARGS(sa.VmId), GUID_ARGS(sa.ServiceId), (int)fd);
 
     tosend = rand();
     if (RAND_MAX < MAX_BUF_LEN)
-        tosend = (int)((double)tosend / 
+        tosend = (int)((double)tosend /
                        ((long long)RAND_MAX + 1) *  (MAX_BUF_LEN - 1) + 1);
     else
         tosend = tosend % (MAX_BUF_LEN - 1) + 1;
 
-    DBG("TOSEND: %d bytes\n", tosend);
+    DBG("[%02d:%05d] TOSEND: %d bytes\n", id, conn, tosend);
     args.fd = fd;
     args.tosend = tosend;
+    args.id = id;
+    args.conn = conn;
     thread_create(&st, &client_tx, &args);
 
     while (received < tosend) {
         res = recv(fd, recvbuf, MAX_BUF_LEN, 0);
         if (res < 0) {
-            snprintf(tmp, sizeof(tmp), "recv() after %d bytes", received);
+            snprintf(tmp, sizeof(tmp), "[%02d:%05d] recv() after %d bytes",
+                     id, conn, received);
             sockerr(tmp);
             goto thout;
         } else if (res == 0) {
-            INFO("Connection closed\n");
+            INFO("[%02d:%05d] Connection closed\n", id, conn);
             res = 1;
             goto thout;
         }
         received += res;
     }
-    INFO("RX: %d bytes received\n", received);
+    INFO("[%02d:%05d] RX: %d bytes received\n", id, conn, received);
     res = 0;
 
 thout:
     thread_join(st);
 out:
-    TRC("close(%d)\n", (int)fd);
+    TRC("[%02d:%05d] close(%d)\n", id, conn, (int)fd);
     closesocket(fd);
     free(recvbuf);
     return res;
+}
+
+static void *client_thd(void *a)
+{
+    struct client_args *args = a;
+    int res, i;
+
+    for (i = 0; i < args->conns; i++) {
+        res = client_one(args->target, args->id, i);
+        if (res)
+            break;
+    }
+
+    args->res = res;
+    return args;
 }
 
 void usage(char *name)
@@ -289,14 +321,17 @@ void usage(char *name)
     printf("   <guid>:     Connect to VM with GUID\n");
     printf(" -i <conns> Number connections the client makes (default %d)\n",
            DEFAULT_CLIENT_CONN);
+    printf(" -p <num>   Run 'num' connections in parallel (default 1)\n");
     printf(" -r         Initialise random number generator with the time\n");
     printf(" -v         Verbose output\n");
 }
 
 int __cdecl main(int argc, char **argv)
 {
-    int opt_server = 0;
+    struct client_args *args;
     int opt_conns = DEFAULT_CLIENT_CONN;
+    int opt_server = 0;
+    int opt_par = 1;
     GUID target;
     int res = 0;
     int i;
@@ -341,6 +376,13 @@ int __cdecl main(int argc, char **argv)
                 goto out;
             }
             opt_conns = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-p") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "-p requires an argument\n");
+                usage(argv[0]);
+                goto out;
+            }
+            opt_par = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-r") == 0) {
             srand(time(NULL));
         } else if (strcmp(argv[i], "-v") == 0) {
@@ -351,15 +393,33 @@ int __cdecl main(int argc, char **argv)
         }
     }
 
-    if (opt_server)
+    if (opt_server) {
         server();
-    else
-        for (i = 0; i < opt_conns; i++) {
-            INFO("TEST: %d\n", i);
-            res = client_one(target);
-            if (res)
-                break;
+    } else {
+        args = calloc(opt_par, sizeof(*args));
+        if (!args) {
+            fprintf(stderr, "failed to malloc");
+            res = -1;
+            goto out;
         }
+
+        /* Create threads */
+        for (i = 0; i < opt_par; i++) {
+            args[i].target = target;
+            args[i].id = i;
+            args[i].conns = opt_conns / opt_par;
+            thread_create(&args[i].h, &client_thd, &args[i]);
+        }
+
+        /* Wait for threads to finish and collect return codes */
+        res = 0;
+        for (i = 0; i < opt_par; i++) {
+            thread_join(args[i].h);
+            if (args[i].res)
+                fprintf(stderr, "THREAD[%d] failed with %d", i, args[i].res);
+            res |= args[i].res;
+        }
+    }
 
 out:
 #ifdef _MSC_VER
