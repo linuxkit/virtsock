@@ -134,16 +134,16 @@ func handleRequest(c net.Conn, connid int) {
 		}
 	}()
 
+	start := time.Now()
+
 	n, err := io.Copy(c, c)
 	if err != nil {
 		prError("[%05d] Copy(): %s", connid, err)
 		return
 	}
-	prInfo("[%05d] Copied Bytes: %d\n", connid, n)
 
-	if n == 0 {
-		return
-	}
+	diffTime := time.Since(start)
+	prInfo("[%05d] ECHOED: %10d bytes in %10.4f ms\n", connid, n, diffTime.Seconds()*1000)
 }
 
 func parClient(wg *sync.WaitGroup, cl Client) {
@@ -169,7 +169,6 @@ func md5Hash(h hash.Hash) [16]byte {
 		r[i] = b
 	}
 	return r
-
 }
 
 func client(cl Client, conid int) {
@@ -298,7 +297,7 @@ func client(cl Client, conid int) {
 	prDebug("[%05d] TX: %d bytes, md5=%02x in %s\n", conid, totalSent, csum0, txTime)
 
 	csum1 := md5Hash(hash1)
-	prInfo("[%05d] RX: %d bytes, md5=%02x in %s (sent=%d)\n", conid, totalReceived, csum1, rxTime, totalSent)
+	prInfo("[%05d] TX/RX: %10d bytes in %10.4f ms\n", conid, totalReceived, rxTime.Seconds()*1000)
 	if csum0 != csum1 {
 		prError("[%05d] Checksums don't match", conid)
 	}
