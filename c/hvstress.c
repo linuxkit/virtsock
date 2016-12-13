@@ -46,12 +46,18 @@ static int verbose;
 static WSADATA wsaData;
 #endif
 
+struct svr_args {
+    SOCKET fd;
+    int conn;
+};
+
 /* Handle a connection. Echo back anything sent to us and when the
  * connection is closed send a bye message.
  */
 static void *handle(void *a)
 {
-    SOCKET fd = *(SOCKET *)a;
+    struct svr_args *args = a;
+    uint64_t start, end, diff;
     char recvbuf[SVR_BUF_LEN];
     int recvbuflen = SVR_BUF_LEN;
     int total_bytes = 0;
@@ -59,12 +65,14 @@ static void *handle(void *a)
     int sent;
     int res;
 
-    TRC("server thread: Handle fd=%d\n", (int)fd);
+    TRC("[%05d] server thread: Handle fd=%d\n", args->conn, (int)args->fd);
+
+    start = time_ns();
 
     for (;;) {
-        received = recv(fd, recvbuf, recvbuflen, 0);
+        received = recv(args->fd, recvbuf, recvbuflen, 0);
         if (received == 0) {
-            DBG("Peer closed\n");
+            DBG("[%05d] Peer closed\n", args->conn);
             break;
         } else if (received == SOCKET_ERROR) {
             sockerr("recv()");
@@ -73,7 +81,7 @@ static void *handle(void *a)
 
         sent = 0;
         while (sent < received) {
-            res = send(fd, recvbuf + sent, received - sent, 0);
+            res = send(args->fd, recvbuf + sent, received - sent, 0);
             if (res == SOCKET_ERROR) {
                 sockerr("send()");
                 goto out;
@@ -83,11 +91,16 @@ static void *handle(void *a)
         total_bytes += sent;
     }
 
+    end = time_ns();
+
 out:
-    INFO("ECHOED: %d Bytes\n", total_bytes);
-    free(a);
-    TRC("close(%d)\n", (int)fd);
-    closesocket(fd);
+    diff = end - start;
+    diff /= 1000 * 1000;
+    INFO("[%05d] ECHOED: %7d Bytes in %5"PRIu64"ms\n",
+         args->conn, total_bytes, diff);
+    TRC("close(%d)\n", (int)args->fd);
+    closesocket(args->fd);
+    free(args);
     return NULL;
 }
 
@@ -97,10 +110,12 @@ out:
  */
 static int server(void)
 {
-    SOCKET lsock, csock, *sp;
+    SOCKET lsock, csock;
     SOCKADDR_HV sa, sac;
     socklen_t socklen = sizeof(sac);
+    struct svr_args *args;
     THREAD_HANDLE st;
+    int conn = 0;
     int res;
 
     lsock = socket(AF_HYPERV, SOCK_STREAM, HV_PROTOCOL_RAW);
@@ -142,9 +157,14 @@ static int server(void)
         /* Spin up a new thread per connection. Not the most
          * efficient, but stops us from having to faff about with
          * worker threads and the like. */
-        sp = malloc(sizeof(*sp));
-        *sp = csock;
-        thread_create(&st, &handle, sp);
+        args = malloc(sizeof(*args));
+        if (!args) {
+            fprintf(stderr, "failled to malloc thread state\n");
+            return 1;
+        }
+        args->fd = csock;
+        args->conn = conn++;
+        thread_create(&st, &handle, args);
         thread_detach(st);
     }
 }
@@ -207,7 +227,7 @@ static void *client_tx(void *a)
         }
         tosend -= res;
     }
-    DBG("[%02d:%05d] TX: %d bytes sent\n", args->id, args->conn, args->tosend);
+    DBG("[%02d:%05d] TX: %7d bytes sent\n", args->id, args->conn, args->tosend);
 
 out:
     return NULL;
@@ -217,6 +237,7 @@ out:
 static int client_one(GUID target, int id, int conn)
 {
     struct client_tx_args args;
+    uint64_t start, end, diff;
     THREAD_HANDLE st;
     SOCKADDR_HV sa;
     SOCKET fd;
@@ -232,6 +253,8 @@ static int client_one(GUID target, int id, int conn)
         fprintf(stderr, "[%02d:%05d] Failed to allocate recvbuf\n", id, conn);
         return 1;
     }
+
+    start = time_ns();
 
     fd = socket(AF_HYPERV, SOCK_STREAM, HV_PROTOCOL_RAW);
     if (fd == INVALID_SOCKET) {
@@ -284,11 +307,16 @@ static int client_one(GUID target, int id, int conn)
         }
         received += res;
     }
-    INFO("[%02d:%05d] RX: %d bytes received\n", id, conn, received);
+
     res = 0;
 
 thout:
     thread_join(st);
+    end = time_ns();
+    diff = end - start;
+    diff /= 1000 * 1000;
+    INFO("[%02d:%05d] TX/RX: %7d bytes in %5"PRIu64"ms\n",
+         id, conn, received, diff);
 out:
     TRC("[%02d:%05d] close(%d)\n", id, conn, (int)fd);
     closesocket(fd);
