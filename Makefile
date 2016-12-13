@@ -1,4 +1,4 @@
-.PHONY: build-in-container build-binaries hvgostress hvgoecho clean
+.PHONY: build-in-container build-binaries virtsock_stress virtsock_echo clean
 DEPS:=$(wildcard pkg/*.go) $(wildcard examples/*.go) Dockerfile.build Makefile
 
 build-in-container: $(DEPS) clean
@@ -8,46 +8,46 @@ build-in-container: $(DEPS) clean
 		-v ${CURDIR}/build:/go/src/github.com/rneugeba/virtsock/build \
 		virtsock-build
 
-build-binaries: hvgostress hvgoecho
-hvgostress: build/hvgostress.darwin build/hvgostress.linux build/hvgostress.exe
-hvgoecho: build/hvgoecho.darwin build/hvgoecho.linux build/hvgoecho.exe
+build-binaries: virtsock_stress virtsock_echo
+virtsock_stress: build/virtsock_stress.darwin build/virtsock_stress.linux build/virtsock_stress.exe
+virtsock_echo: build/virtsock_echo.darwin build/virtsock_echo.linux build/virtsock_echo.exe
 
 
-build/hvgostress.linux: $(DEPS)
+build/virtsock_stress.linux: $(DEPS)
 	@echo "+ $@"
 	GOOS=linux GOARCH=amd64 \
 	go build -o $@ --ldflags '-extldflags "-fno-PIC"' \
-		examples/hvgostress.go examples/common_hvsock.go examples/common_vsock.go examples/common_linux.go
+		examples/virtsock_stress.go examples/common_hvsock.go examples/common_vsock.go examples/common_linux.go
 
-build/hvgostress.darwin: $(DEPS)
+build/virtsock_stress.darwin: $(DEPS)
 	@echo "+ $@"
 	GOOS=darwin GOARCH=amd64 \
 	go build -o $@ --ldflags '-extldflags "-fno-PIC"' \
-		examples/hvgostress.go examples/common_vsock.go examples/common_darwin.go
+		examples/virtsock_stress.go examples/common_vsock.go examples/common_darwin.go
 
-build/hvgostress.exe: $(DEPS)
+build/virtsock_stress.exe: $(DEPS)
 	@echo "+ $@"
 	GOOS=windows GOARCH=amd64 \
-	go build -o $@ examples/hvgostress.go examples/common_hvsock.go examples/common_windows.go
+	go build -o $@ examples/virtsock_stress.go examples/common_hvsock.go examples/common_windows.go
 
 
 
-build/hvgoecho.linux: $(DEPS)
+build/virtsock_echo.linux: $(DEPS)
 	@echo "+ $@"
 	GOOS=linux GOARCH=amd64 \
 	go build -o $@ --ldflags '-extldflags "-fno-PIC"' \
-		examples/hvgoecho.go examples/common_hvsock.go examples/common_vsock.go examples/common_linux.go
+		examples/virtsock_echo.go examples/common_hvsock.go examples/common_vsock.go examples/common_linux.go
 
-build/hvgoecho.darwin: $(DEPS)
+build/virtsock_echo.darwin: $(DEPS)
 	@echo "+ $@"
 	GOOS=darwin GOARCH=amd64 \
 	go build -o $@ --ldflags '-extldflags "-fno-PIC"' \
-		examples/hvgoecho.go examples/common_vsock.go examples/common_darwin.go
+		examples/virtsock_echo.go examples/common_vsock.go examples/common_darwin.go
 
-build/hvgoecho.exe: $(DEPS)
+build/virtsock_echo.exe: $(DEPS)
 	@echo "+ $@"
 	GOOS=windows GOARCH=amd64 \
-	go build -o $@ examples/hvgoecho.go examples/common_hvsock.go examples/common_windows.go
+	go build -o $@ examples/virtsock_echo.go examples/common_hvsock.go examples/common_windows.go
 
 
 clean:
