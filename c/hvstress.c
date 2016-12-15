@@ -70,6 +70,7 @@ static void *handle(void *a)
     start = time_ns();
 
     for (;;) {
+        recvbuflen = (recvbuflen == 4) ? SVR_BUF_LEN : 4;
         received = recv(args->fd, recvbuf, recvbuflen, 0);
         if (received == 0) {
             DBG("[%05d] Peer closed\n", args->conn);
