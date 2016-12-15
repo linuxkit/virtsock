@@ -1,9 +1,9 @@
 /*
- * The start of a Hyper-V sockets stress test program.
+ * A simple Hyper-V sockets stress test.
  *
- * TODO:
- * - Add more concurrency
- * - Verify that the data send is the same as received.
+ * This program uses a configurable number of client threads which all
+ * open a connection to a server and then transfer a random amount of
+ * data to the server which echos the data back.
  */
 #include "compat.h"
 
@@ -16,7 +16,7 @@ DEFINE_GUID(MY_SERVICE_GUID,
     0x3049197c, 0x9a4e, 0x4fbf, 0x93, 0x67, 0x97, 0xf7, 0x92, 0xf1, 0x69, 0x94);
 
 #define SVR_BUF_LEN (3 * 4096)
-#define MAX_BUF_LEN (2 * 1024 * 1024)
+#define MAX_BUF_LEN (20 * 1024 * 1024)
 #define DEFAULT_CLIENT_CONN 100
 
 static int verbose;
@@ -70,6 +70,7 @@ static void *handle(void *a)
     start = time_ns();
 
     for (;;) {
+        recvbuflen = (recvbuflen == 4) ? SVR_BUF_LEN : 4;
         received = recv(args->fd, recvbuf, recvbuflen, 0);
         if (received == 0) {
             DBG("[%05d] Peer closed\n", args->conn);
@@ -96,7 +97,7 @@ static void *handle(void *a)
 out:
     diff = end - start;
     diff /= 1000 * 1000;
-    INFO("[%05d] ECHOED: %7d Bytes in %5"PRIu64"ms\n",
+    INFO("[%05d] ECHOED: %9d Bytes in %5"PRIu64"ms\n",
          args->conn, total_bytes, diff);
     TRC("close(%d)\n", (int)args->fd);
     closesocket(args->fd);
@@ -216,8 +217,14 @@ static void *client_tx(void *a)
     int res;
 
     tosend = args->tosend;
+    this_batch = 4;
     while (tosend) {
-        this_batch = (tosend >  MAX_SND_BUF) ? MAX_SND_BUF : tosend;
+        /* Alternate between small and large sends */
+        if (this_batch == 4)
+            this_batch = (tosend >  MAX_SND_BUF) ? MAX_SND_BUF : tosend;
+        else
+            this_batch = (tosend >  4) ? 4 : tosend;
+
         res = send(args->fd, sendbuf, this_batch, 0);
         if (res == SOCKET_ERROR) {
             snprintf(tmp, sizeof(tmp), "[%02d:%05d] send() after %d bytes",
@@ -227,7 +234,7 @@ static void *client_tx(void *a)
         }
         tosend -= res;
     }
-    DBG("[%02d:%05d] TX: %7d bytes sent\n", args->id, args->conn, args->tosend);
+    DBG("[%02d:%05d] TX: %9d bytes sent\n", args->id, args->conn, args->tosend);
 
 out:
     return NULL;
@@ -279,12 +286,12 @@ static int client_one(GUID target, int id, int conn)
     DBG("[%02d:%05d] Connected to: "GUID_FMT":"GUID_FMT" fd=%d\n",
         id, conn, GUID_ARGS(sa.VmId), GUID_ARGS(sa.ServiceId), (int)fd);
 
-    tosend = rand();
     if (RAND_MAX < MAX_BUF_LEN)
-        tosend = (int)((double)tosend /
-                       ((long long)RAND_MAX + 1) *  (MAX_BUF_LEN - 1) + 1);
+        tosend = (int)((1ULL * RAND_MAX + 1) * rand() + rand());
     else
-        tosend = tosend % (MAX_BUF_LEN - 1) + 1;
+        tosend = rand();
+
+    tosend = tosend % (MAX_BUF_LEN - 1) + 1;
 
     DBG("[%02d:%05d] TOSEND: %d bytes\n", id, conn, tosend);
     args.fd = fd;
@@ -315,7 +322,7 @@ thout:
     end = time_ns();
     diff = end - start;
     diff /= 1000 * 1000;
-    INFO("[%02d:%05d] TX/RX: %7d bytes in %5"PRIu64"ms\n",
+    INFO("[%02d:%05d] TX/RX: %9d bytes in %5"PRIu64"ms\n",
          id, conn, received, diff);
 out:
     TRC("[%02d:%05d] close(%d)\n", id, conn, (int)fd);
