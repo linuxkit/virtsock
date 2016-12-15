@@ -216,8 +216,14 @@ static void *client_tx(void *a)
     int res;
 
     tosend = args->tosend;
+    this_batch = 4;
     while (tosend) {
-        this_batch = (tosend >  MAX_SND_BUF) ? MAX_SND_BUF : tosend;
+        /* Alternate between small and large sends */
+        if (this_batch == 4)
+            this_batch = (tosend >  MAX_SND_BUF) ? MAX_SND_BUF : tosend;
+        else
+            this_batch = (tosend >  4) ? 4 : tosend;
+
         res = send(args->fd, sendbuf, this_batch, 0);
         if (res == SOCKET_ERROR) {
             snprintf(tmp, sizeof(tmp), "[%02d:%05d] send() after %d bytes",
