@@ -4,6 +4,10 @@
  * This program uses a configurable number of client threads which all
  * open a connection to a server and then transfer a random amount of
  * data to the server which echos the data back.
+ *
+ * The send()/recv() calls alternate between RXTX_BUF_LEN and
+ * RXTX_SMALL_LEN worth of data to add more variability in the
+ * interaction.
  */
 #include "compat.h"
 
@@ -20,6 +24,8 @@ DEFINE_GUID(MY_SERVICE_GUID,
  * buffers are passed to send() the connection will be close. We could
  * use getsockopt(SO_MAX_MSG_SIZE) */
 #define RXTX_BUF_LEN (4 * 1024)
+/* Small send()/recv() lengths */
+#define RXTX_SMALL_LEN 4
 /* Maximum amount of data transferred over a single connection */
 #define MAX_DATA_LEN (20 * 1024 * 1024)
 /* Default number of connections made by the client */
@@ -75,7 +81,7 @@ static void *handle(void *a)
     uint64_t start, end, diff;
     char recvbuf[RXTX_BUF_LEN];
     int total_bytes = 0;
-    int recvbuflen = 4;
+    int recvbuflen = RXTX_SMALL_LEN;
     int received;
     int sent;
     int res;
@@ -85,7 +91,8 @@ static void *handle(void *a)
     start = time_ns();
 
     for (;;) {
-        recvbuflen = (recvbuflen == 4) ? RXTX_BUF_LEN : 4;
+        recvbuflen = (recvbuflen == RXTX_SMALL_LEN) ?
+            RXTX_BUF_LEN : RXTX_SMALL_LEN;
         received = recv(args->fd, recvbuf, recvbuflen, 0);
         if (received == 0) {
             DBG("[%05d] Peer closed\n", args->conn);
@@ -220,13 +227,13 @@ static void *client_tx(void *a)
     int res;
 
     tosend = args->tosend;
-    this_batch = 4;
+    this_batch = RXTX_SMALL_LEN;
     while (tosend) {
         /* Alternate between small and large sends */
-        if (this_batch == 4)
+        if (this_batch == RXTX_SMALL_LEN)
             this_batch = (tosend > RXTX_BUF_LEN) ? RXTX_BUF_LEN : tosend;
         else
-            this_batch = (tosend > 4) ? 4 : tosend;
+            this_batch = (tosend > RXTX_SMALL_LEN) ? RXTX_SMALL_LEN : tosend;
 
         res = send(args->fd, sendbuf, this_batch, 0);
         if (res == SOCKET_ERROR) {
@@ -252,6 +259,7 @@ static int client_one(GUID target, int id, int conn)
     SOCKADDR_HV sa;
     SOCKET fd;
     char recvbuf[RXTX_BUF_LEN];
+    int recvbuflen = RXTX_SMALL_LEN;
     char tmp[128];
     int tosend, received = 0;
     int res;
@@ -297,7 +305,9 @@ static int client_one(GUID target, int id, int conn)
     thread_create(&st, &client_tx, &args);
 
     while (received < tosend) {
-        res = recv(fd, recvbuf, sizeof(recvbuf), 0);
+        recvbuflen = (recvbuflen == RXTX_SMALL_LEN) ?
+            RXTX_BUF_LEN : RXTX_SMALL_LEN;
+        res = recv(fd, recvbuf, recvbuflen, 0);
         if (res < 0) {
             snprintf(tmp, sizeof(tmp), "[%02d:%05d] recv() after %d bytes",
                      id, conn, received);
