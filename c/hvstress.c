@@ -210,6 +210,7 @@ struct client_args {
     GUID target;
     int id;
     int conns;
+    int rand;
 
     int res;
 };
@@ -345,6 +346,9 @@ static void *client_thd(void *a)
     struct client_args *args = a;
     int res, i;
 
+    if (args->rand)
+        srand(time(NULL) + args->id);
+
     for (i = 0; i < args->conns; i++) {
         res = client_one(args->target, args->id, i);
         if (res)
@@ -380,6 +384,7 @@ int __cdecl main(int argc, char **argv)
     int opt_conns = DEFAULT_CLIENT_CONN;
     int opt_multi_thds = 1;
     int opt_server = 0;
+    int opt_rand = 0;
     int opt_par = 1;
     GUID target;
     int res = 0;
@@ -433,7 +438,7 @@ int __cdecl main(int argc, char **argv)
             }
             opt_par = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-r") == 0) {
-            srand(time(NULL));
+            opt_rand = 1;
         } else if (strcmp(argv[i], "-1") == 0) {
             opt_multi_thds = 0;
         } else if (strcmp(argv[i], "-v") == 0) {
@@ -459,6 +464,7 @@ int __cdecl main(int argc, char **argv)
             args[i].target = target;
             args[i].id = i;
             args[i].conns = opt_conns / opt_par;
+            args[i].rand = opt_rand;
             thread_create(&args[i].h, &client_thd, &args[i]);
         }
 
