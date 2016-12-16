@@ -14,7 +14,7 @@ hvecho.linux: hvecho.c Dockerfile.hvecho $(DEPS)
 	chmod 755 hvecho
 
 hvecho: hvecho.c $(DEPS)
-	gcc -Wall -Werror -o hvecho hvecho.c
+	gcc -Wall -Werror -g -o hvecho hvecho.c
 
 hvecho.exe: hvecho.c hvecho.vcxproj hvecho.sln $(DEPS)
 	$(MSBUILD) hvecho.sln
@@ -27,7 +27,7 @@ hvstress.linux: hvstress.c Dockerfile.hvstress $(DEPS)
 	chmod 755 hvstress
 
 hvstress: hvstress.c $(DEPS)
-	gcc -Wall -Werror -o hvstress hvstress.c
+	gcc -Wall -Werror -g -o hvstress hvstress.c
 
 hvstress.exe: hvstress.c hvstress.vcxproj hvstress.sln $(DEPS)
 	$(MSBUILD) hvstress.sln
@@ -40,7 +40,7 @@ hvbench.linux: hvbench.c Dockerfile.hvbench $(DEPS)
 	chmod 755 hvbench
 
 hvbench: hvbench.c $(DEPS)
-	gcc -Wall -Werror -o hvbench hvbench.c
+	gcc -Wall -Werror -g -o hvbench hvbench.c
 
 hvbench.exe: hvbench.c hvbench.vcxproj hvbench.sln $(DEPS)
 	$(MSBUILD) hvbench.sln
