@@ -4,6 +4,10 @@
  * This program uses a configurable number of client threads which all
  * open a connection to a server and then transfer a random amount of
  * data to the server which echos the data back.
+ *
+ * The send()/recv() calls alternate between RXTX_BUF_LEN and
+ * RXTX_SMALL_LEN worth of data to add more variability in the
+ * interaction.
  */
 #include "compat.h"
 
@@ -15,9 +19,18 @@
 DEFINE_GUID(MY_SERVICE_GUID,
     0x3049197c, 0x9a4e, 0x4fbf, 0x93, 0x67, 0x97, 0xf7, 0x92, 0xf1, 0x69, 0x94);
 
-#define SVR_BUF_LEN (3 * 4096)
-#define MAX_BUF_LEN (20 * 1024 * 1024)
+/* Maximum amount of data for a single send()/recv() call.
+ * Note: On Windows the maximum length seems to be 8KB and if larger
+ * buffers are passed to send() the connection will be close. We could
+ * use getsockopt(SO_MAX_MSG_SIZE) */
+#define RXTX_BUF_LEN (4 * 1024)
+/* Small send()/recv() lengths */
+#define RXTX_SMALL_LEN 4
+/* Maximum amount of data transferred over a single connection */
+#define MAX_DATA_LEN (20 * 1024 * 1024)
+/* Default number of connections made by the client */
 #define DEFAULT_CLIENT_CONN 100
+
 
 static int verbose;
 #define INFO(...)                                                       \
@@ -46,21 +59,29 @@ static int verbose;
 static WSADATA wsaData;
 #endif
 
+
+/* Server code
+ *
+ * The server accepts a new connection and spins of a new thread to
+ * handle it. The thread simply echos back the data. We use a thread
+ * per connection because it's simpler code, but ideally we should be
+ * using a pool of worker threads.
+ */
+
+/* Arguments to the server thread */
 struct svr_args {
     SOCKET fd;
     int conn;
 };
 
-/* Handle a connection. Echo back anything sent to us and when the
- * connection is closed send a bye message.
- */
+/* Thread entry point for a server */
 static void *handle(void *a)
 {
     struct svr_args *args = a;
     uint64_t start, end, diff;
-    char recvbuf[SVR_BUF_LEN];
-    int recvbuflen = SVR_BUF_LEN;
+    char recvbuf[RXTX_BUF_LEN];
     int total_bytes = 0;
+    int recvbuflen = RXTX_SMALL_LEN;
     int received;
     int sent;
     int res;
@@ -70,7 +91,8 @@ static void *handle(void *a)
     start = time_ns();
 
     for (;;) {
-        recvbuflen = (recvbuflen == 4) ? SVR_BUF_LEN : 4;
+        recvbuflen = (recvbuflen == RXTX_SMALL_LEN) ?
+            RXTX_BUF_LEN : RXTX_SMALL_LEN;
         received = recv(args->fd, recvbuf, recvbuflen, 0);
         if (received == 0) {
             DBG("[%05d] Peer closed\n", args->conn);
@@ -106,9 +128,7 @@ out:
 }
 
 
-/* Server:
- * accept() in an endless loop, handle a connection at a time
- */
+/* Server entry point */
 static int server(void)
 {
     SOCKET lsock, csock;
@@ -198,32 +218,22 @@ struct client_tx_args {
     int conn;
 };
 
-
-#if _MSC_VER
-/* XXX On Windows, calling send with 32K causes the connection being
- * closed!!!  The MSDN pages for send() is ambiguous about this. We
- * could use getsockopt(SO_MAX_MSG_SIZE) to query the size, but
- * instead hard code this value to 8k. */
-#define MAX_SND_BUF (8 * 1024)
-#else
-#define MAX_SND_BUF (32 * 1024)
-#endif
 static void *client_tx(void *a)
 {
     struct client_tx_args *args = a;
-    char sendbuf[MAX_SND_BUF];
+    char sendbuf[RXTX_BUF_LEN];
     char tmp[128];
     int tosend, this_batch;
     int res;
 
     tosend = args->tosend;
-    this_batch = 4;
+    this_batch = RXTX_SMALL_LEN;
     while (tosend) {
         /* Alternate between small and large sends */
-        if (this_batch == 4)
-            this_batch = (tosend >  MAX_SND_BUF) ? MAX_SND_BUF : tosend;
+        if (this_batch == RXTX_SMALL_LEN)
+            this_batch = (tosend > RXTX_BUF_LEN) ? RXTX_BUF_LEN : tosend;
         else
-            this_batch = (tosend >  4) ? 4 : tosend;
+            this_batch = (tosend > RXTX_SMALL_LEN) ? RXTX_SMALL_LEN : tosend;
 
         res = send(args->fd, sendbuf, this_batch, 0);
         if (res == SOCKET_ERROR) {
@@ -248,25 +258,19 @@ static int client_one(GUID target, int id, int conn)
     THREAD_HANDLE st;
     SOCKADDR_HV sa;
     SOCKET fd;
-    char *recvbuf;
+    char recvbuf[RXTX_BUF_LEN];
+    int recvbuflen = RXTX_SMALL_LEN;
     char tmp[128];
     int tosend, received = 0;
     int res;
 
     TRC("[%02d:%05d] start\n", id, conn);
 
-    recvbuf = malloc(MAX_BUF_LEN);
-    if (!recvbuf) {
-        fprintf(stderr, "[%02d:%05d] Failed to allocate recvbuf\n", id, conn);
-        return 1;
-    }
-
     start = time_ns();
 
     fd = socket(AF_HYPERV, SOCK_STREAM, HV_PROTOCOL_RAW);
     if (fd == INVALID_SOCKET) {
         sockerr("socket()");
-        free(recvbuf);
         return 1;
     }
 
@@ -286,12 +290,12 @@ static int client_one(GUID target, int id, int conn)
     DBG("[%02d:%05d] Connected to: "GUID_FMT":"GUID_FMT" fd=%d\n",
         id, conn, GUID_ARGS(sa.VmId), GUID_ARGS(sa.ServiceId), (int)fd);
 
-    if (RAND_MAX < MAX_BUF_LEN)
+    if (RAND_MAX < MAX_DATA_LEN)
         tosend = (int)((1ULL * RAND_MAX + 1) * rand() + rand());
     else
         tosend = rand();
 
-    tosend = tosend % (MAX_BUF_LEN - 1) + 1;
+    tosend = tosend % (MAX_DATA_LEN - 1) + 1;
 
     DBG("[%02d:%05d] TOSEND: %d bytes\n", id, conn, tosend);
     args.fd = fd;
@@ -301,7 +305,9 @@ static int client_one(GUID target, int id, int conn)
     thread_create(&st, &client_tx, &args);
 
     while (received < tosend) {
-        res = recv(fd, recvbuf, MAX_BUF_LEN, 0);
+        recvbuflen = (recvbuflen == RXTX_SMALL_LEN) ?
+            RXTX_BUF_LEN : RXTX_SMALL_LEN;
+        res = recv(fd, recvbuf, recvbuflen, 0);
         if (res < 0) {
             snprintf(tmp, sizeof(tmp), "[%02d:%05d] recv() after %d bytes",
                      id, conn, received);
@@ -327,7 +333,6 @@ thout:
 out:
     TRC("[%02d:%05d] close(%d)\n", id, conn, (int)fd);
     closesocket(fd);
-    free(recvbuf);
     return res;
 }
 
@@ -451,7 +456,7 @@ int __cdecl main(int argc, char **argv)
         for (i = 0; i < opt_par; i++) {
             thread_join(args[i].h);
             if (args[i].res)
-                fprintf(stderr, "THREAD[%d] failed with %d", i, args[i].res);
+                fprintf(stderr, "THREAD[%d] failed with %d\n", i, args[i].res);
             res |= args[i].res;
         }
     }
