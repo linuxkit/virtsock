@@ -451,7 +451,7 @@ int __cdecl main(int argc, char **argv)
         for (i = 0; i < opt_par; i++) {
             thread_join(args[i].h);
             if (args[i].res)
-                fprintf(stderr, "THREAD[%d] failed with %d", i, args[i].res);
+                fprintf(stderr, "THREAD[%d] failed with %d\n", i, args[i].res);
             res |= args[i].res;
         }
     }
