@@ -129,7 +129,7 @@ out:
 
 
 /* Server entry point */
-static int server(void)
+static int server(int multi_threaded)
 {
     SOCKET lsock, csock;
     SOCKADDR_HV sa, sac;
@@ -180,13 +180,17 @@ static int server(void)
          * worker threads and the like. */
         args = malloc(sizeof(*args));
         if (!args) {
-            fprintf(stderr, "failled to malloc thread state\n");
+            fprintf(stderr, "failed to malloc thread state\n");
             return 1;
         }
         args->fd = csock;
         args->conn = conn++;
-        thread_create(&st, &handle, args);
-        thread_detach(st);
+        if (multi_threaded) {
+            thread_create(&st, &handle, args);
+            thread_detach(st);
+        } else {
+            handle(args);
+        }
     }
 }
 
@@ -206,6 +210,7 @@ struct client_args {
     GUID target;
     int id;
     int conns;
+    int rand;
 
     int res;
 };
@@ -341,6 +346,9 @@ static void *client_thd(void *a)
     struct client_args *args = a;
     int res, i;
 
+    if (args->rand)
+        srand(time(NULL) + args->id);
+
     for (i = 0; i < args->conns; i++) {
         res = client_one(args->target, args->id, i);
         if (res)
@@ -355,6 +363,9 @@ void usage(char *name)
 {
     printf("%s: -s|-c <carg> [-i <conns>]\n", name);
     printf(" -s         Server mode\n");
+    printf(" -1         "
+           "Use a single thread (handle one connection at a time)\n");
+    printf("\n");
     printf(" -c <carg>  Client mode. <carg>:\n");
     printf("   'loopback': Connect in loopback mode\n");
     printf("   'parent':   Connect to the parent partition\n");
@@ -363,14 +374,17 @@ void usage(char *name)
            DEFAULT_CLIENT_CONN);
     printf(" -p <num>   Run 'num' connections in parallel (default 1)\n");
     printf(" -r         Initialise random number generator with the time\n");
-    printf(" -v         Verbose output\n");
+    printf("\n");
+    printf(" -v         Verbose output (use multiple times)\n");
 }
 
 int __cdecl main(int argc, char **argv)
 {
     struct client_args *args;
     int opt_conns = DEFAULT_CLIENT_CONN;
+    int opt_multi_thds = 1;
     int opt_server = 0;
+    int opt_rand = 0;
     int opt_par = 1;
     GUID target;
     int res = 0;
@@ -424,7 +438,9 @@ int __cdecl main(int argc, char **argv)
             }
             opt_par = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-r") == 0) {
-            srand(time(NULL));
+            opt_rand = 1;
+        } else if (strcmp(argv[i], "-1") == 0) {
+            opt_multi_thds = 0;
         } else if (strcmp(argv[i], "-v") == 0) {
             verbose++;
         } else {
@@ -434,7 +450,7 @@ int __cdecl main(int argc, char **argv)
     }
 
     if (opt_server) {
-        server();
+        server(opt_multi_thds);
     } else {
         args = calloc(opt_par, sizeof(*args));
         if (!args) {
@@ -448,6 +464,7 @@ int __cdecl main(int argc, char **argv)
             args[i].target = target;
             args[i].id = i;
             args[i].conns = opt_conns / opt_par;
+            args[i].rand = opt_rand;
             thread_create(&args[i].h, &client_thd, &args[i]);
         }
 
