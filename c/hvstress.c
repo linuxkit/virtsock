@@ -5,8 +5,8 @@
  * open a connection to a server and then transfer a random amount of
  * data to the server which echos the data back.
  *
- * The send()/recv() calls alternate between RXTX_BUF_LEN and
- * RXTX_SMALL_LEN worth of data to add more variability in the
+ * The send()/recv() calls optionally alternate between RXTX_BUF_LEN
+ * and RXTX_SMALL_LEN worth of data to add more variability in the
  * interaction.
  */
 #include "compat.h"
@@ -31,6 +31,8 @@ DEFINE_GUID(MY_SERVICE_GUID,
 /* Default number of connections made by the client */
 #define DEFAULT_CLIENT_CONN 100
 
+/* Global flag to alternate between short and long send()/recv() buffers */
+static int opt_alternate;
 
 static int verbose;
 #define INFO(...)                                                       \
@@ -81,7 +83,7 @@ static void *handle(void *a)
     uint64_t start, end, diff;
     char recvbuf[RXTX_BUF_LEN];
     int total_bytes = 0;
-    int recvbuflen = RXTX_SMALL_LEN;
+    int rxlen = RXTX_SMALL_LEN;
     int received;
     int sent;
     int res;
@@ -91,9 +93,11 @@ static void *handle(void *a)
     start = time_ns();
 
     for (;;) {
-        recvbuflen = (recvbuflen == RXTX_SMALL_LEN) ?
-            RXTX_BUF_LEN : RXTX_SMALL_LEN;
-        received = recv(args->fd, recvbuf, recvbuflen, 0);
+        if (opt_alternate)
+            rxlen = (rxlen == RXTX_SMALL_LEN) ? RXTX_BUF_LEN : RXTX_SMALL_LEN;
+        else
+            rxlen = RXTX_BUF_LEN;
+        received = recv(args->fd, recvbuf, rxlen, 0);
         if (received == 0) {
             DBG("[%05d] Peer closed\n", args->conn);
             break;
@@ -228,19 +232,18 @@ static void *client_tx(void *a)
     struct client_tx_args *args = a;
     char sendbuf[RXTX_BUF_LEN];
     char tmp[128];
-    int tosend, this_batch;
+    int tosend, txlen = RXTX_SMALL_LEN;
     int res;
 
     tosend = args->tosend;
-    this_batch = RXTX_SMALL_LEN;
     while (tosend) {
-        /* Alternate between small and large sends */
-        if (this_batch == RXTX_SMALL_LEN)
-            this_batch = (tosend > RXTX_BUF_LEN) ? RXTX_BUF_LEN : tosend;
+        if (opt_alternate)
+            txlen = (txlen == RXTX_SMALL_LEN) ? RXTX_BUF_LEN : RXTX_SMALL_LEN;
         else
-            this_batch = (tosend > RXTX_SMALL_LEN) ? RXTX_SMALL_LEN : tosend;
-
-        res = send(args->fd, sendbuf, this_batch, 0);
+            txlen = RXTX_BUF_LEN;
+        txlen = (tosend > txlen) ? txlen : tosend;
+        
+        res = send(args->fd, sendbuf, txlen, 0);
         if (res == SOCKET_ERROR) {
             snprintf(tmp, sizeof(tmp), "[%02d:%05d] send() after %d bytes",
                      args->id, args->conn, args->tosend - tosend);
@@ -264,7 +267,7 @@ static int client_one(GUID target, int id, int conn)
     SOCKADDR_HV sa;
     SOCKET fd;
     char recvbuf[RXTX_BUF_LEN];
-    int recvbuflen = RXTX_SMALL_LEN;
+    int rxlen = RXTX_SMALL_LEN;
     char tmp[128];
     int tosend, received = 0;
     int res;
@@ -310,9 +313,11 @@ static int client_one(GUID target, int id, int conn)
     thread_create(&st, &client_tx, &args);
 
     while (received < tosend) {
-        recvbuflen = (recvbuflen == RXTX_SMALL_LEN) ?
-            RXTX_BUF_LEN : RXTX_SMALL_LEN;
-        res = recv(fd, recvbuf, recvbuflen, 0);
+        if (opt_alternate)
+            rxlen = (rxlen == RXTX_SMALL_LEN) ? RXTX_BUF_LEN : RXTX_SMALL_LEN;
+        else
+            rxlen = RXTX_BUF_LEN;
+        res = recv(fd, recvbuf, rxlen, 0);
         if (res < 0) {
             snprintf(tmp, sizeof(tmp), "[%02d:%05d] recv() after %d bytes",
                      id, conn, received);
@@ -375,6 +380,8 @@ void usage(char *name)
     printf(" -p <num>   Run 'num' connections in parallel (default 1)\n");
     printf(" -r         Initialise random number generator with the time\n");
     printf("\n");
+    printf("Common options\n");
+    printf(" -a         Alternate using short/long send()/recv() buffers\n");
     printf(" -v         Verbose output (use multiple times)\n");
 }
 
@@ -441,6 +448,8 @@ int __cdecl main(int argc, char **argv)
             opt_rand = 1;
         } else if (strcmp(argv[i], "-1") == 0) {
             opt_multi_thds = 0;
+        } else if (strcmp(argv[i], "-a") == 0) {
+            opt_alternate = 1;
         } else if (strcmp(argv[i], "-v") == 0) {
             verbose++;
         } else {
