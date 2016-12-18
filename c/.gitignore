@@ -5,6 +5,7 @@
 /.vs
 /x64
 /Debug
+/build
 
 /hvbench
 hvbench.*.db
