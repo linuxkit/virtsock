@@ -13,7 +13,7 @@ linux: build/hvbench build/hvecho build/hvstress
 windows: build/hvecho.exe build/hvstress.exe build/hvbench.exe
 
 # Linux targets
-CFLAGS := -Wall -Werror -g -static
+CFLAGS := -Wall -Werror -g -ggdb -static
 build/hvbench: hvbench.c $(DEPS)
 	$(CC) $(CFLAGS) -o $@ $<
 

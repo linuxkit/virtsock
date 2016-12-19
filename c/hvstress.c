@@ -133,7 +133,7 @@ out:
 
 
 /* Server entry point */
-static int server(int multi_threaded)
+static int server(int multi_threaded, int max_conn)
 {
     SOCKET lsock, csock;
     SOCKADDR_HV sa, sac;
@@ -195,7 +195,15 @@ static int server(int multi_threaded)
         } else {
             handle(args);
         }
+
+        /* Note, since we are not waiting for thread to finish, this may
+         * cause the last n connections not being handled properly. */
+        if (conn >= max_conn)
+            break;
     }
+
+    closesocket(lsock);
+    return 0;
 }
 
 
@@ -375,12 +383,12 @@ void usage(char *name)
     printf("   'loopback': Connect in loopback mode\n");
     printf("   'parent':   Connect to the parent partition\n");
     printf("   <guid>:     Connect to VM with GUID\n");
-    printf(" -i <conns> Number connections the client makes (default %d)\n",
-           DEFAULT_CLIENT_CONN);
     printf(" -p <num>   Run 'num' connections in parallel (default 1)\n");
     printf(" -r         Initialise random number generator with the time\n");
     printf("\n");
     printf("Common options\n");
+    printf(" -i <conns> Number connections the client makes (default %d)\n",
+           DEFAULT_CLIENT_CONN);
     printf(" -a         Alternate using short/long send()/recv() buffers\n");
     printf(" -v         Verbose output (use multiple times)\n");
 }
@@ -459,7 +467,7 @@ int __cdecl main(int argc, char **argv)
     }
 
     if (opt_server) {
-        server(opt_multi_thds);
+        server(opt_multi_thds, opt_conns);
     } else {
         args = calloc(opt_par, sizeof(*args));
         if (!args) {
