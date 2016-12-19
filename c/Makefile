@@ -27,14 +27,17 @@ build/hvstress: hvstress.c $(DEPS)
 # Windows targets
 build/hvbench.exe: hvbench.c hvbench.vcxproj hvbench.sln $(DEPS)
 	$(MSBUILD) hvbench.sln
+	mkdir -p build
 	cp x64/Debug/hvbench.exe $@
 
 build/hvecho.exe: hvecho.c hvecho.vcxproj hvecho.sln $(DEPS)
 	$(MSBUILD) hvecho.sln
+	mkdir -p build
 	cp x64/Debug/hvecho.exe $@
 
 build/hvstress.exe: hvstress.c hvstress.vcxproj hvstress.sln $(DEPS)
 	$(MSBUILD) hvstress.sln
+	mkdir -p build
 	cp x64/Debug/hvstress.exe $@
 
 clean:
