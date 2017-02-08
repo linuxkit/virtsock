@@ -65,7 +65,7 @@ func ServerListen() net.Listener {
 		panic("socketMode")
 	}
 
-	l, err := vsock.Listen(vsockPort)
+	l, err := vsock.Listen(vsock.CIDAny, vsockPort)
 	if err != nil {
 		log.Fatalln("Listen():", err)
 	}
