@@ -44,6 +44,10 @@ const (
 	AF_VSOCK = 40
 )
 
+// SocketMode is a NOOP on Linux
+func SocketMode(m string) {
+}
+
 func Dial(cid, port uint) (Conn, error) {
 	fd, err := syscall.Socket(AF_VSOCK, syscall.SOCK_STREAM, 0)
 	if err != nil {
