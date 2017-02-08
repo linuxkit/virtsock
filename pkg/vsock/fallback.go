@@ -5,6 +5,7 @@ package vsock
 import (
 	"fmt"
 	"log"
+	"net"
 )
 
 // SocketMode is the unimplemented fallback for unsupported OSes
