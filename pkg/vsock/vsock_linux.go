@@ -70,7 +70,7 @@ func Dial(cid, port uint) (Conn, error) {
 
 // Listen returns a net.Listener which can accept connections on the given
 // vhan port.
-func Listen(port uint) (net.Listener, error) {
+func Listen(cid, port uint) (net.Listener, error) {
 	accept_fd, err := syscall.Socket(AF_VSOCK, syscall.SOCK_STREAM, 0)
 	if err != nil {
 		return nil, err
@@ -79,7 +79,7 @@ func Listen(port uint) (net.Listener, error) {
 	sa := C.struct_sockaddr_vm{}
 	sa.svm_family = AF_VSOCK
 	sa.svm_port = C.uint(port)
-	sa.svm_cid = CIDAny
+	sa.svm_cid = C.uint(cid)
 
 	if ret, errno := C.bind_sockaddr_vm(C.int(accept_fd), &sa); ret != 0 {
 		return nil, errors.New(fmt.Sprintf(
