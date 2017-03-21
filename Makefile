@@ -16,7 +16,7 @@ virtsock_echo: build/virtsock_echo.darwin build/virtsock_echo.linux build/virtso
 build/virtsock_stress.linux: $(DEPS)
 	@echo "+ $@"
 	GOOS=linux GOARCH=amd64 \
-	go build -o $@ --ldflags '-extldflags "-fno-PIC"' \
+	go build -o $@ -buildmode pie --ldflags '-s -w -extldflags "-static"' \
 		examples/virtsock_stress.go examples/common_hvsock.go examples/common_vsock.go examples/common_linux.go
 
 build/virtsock_stress.darwin: $(DEPS)
@@ -35,7 +35,7 @@ build/virtsock_stress.exe: $(DEPS)
 build/virtsock_echo.linux: $(DEPS)
 	@echo "+ $@"
 	GOOS=linux GOARCH=amd64 \
-	go build -o $@ --ldflags '-extldflags "-fno-PIC"' \
+	go build -o $@ -buildmode pie --ldflags '-s -w -extldflags "-static"' \
 		examples/virtsock_echo.go examples/common_hvsock.go examples/common_vsock.go examples/common_linux.go
 
 build/virtsock_echo.darwin: $(DEPS)
