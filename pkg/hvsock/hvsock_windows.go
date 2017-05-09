@@ -4,7 +4,9 @@ import (
 	"errors"
 	"io"
 	"log"
+	"runtime"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -23,6 +25,12 @@ const (
 	sysSHV_PROTO_RAW = 1
 
 	socket_error = uintptr(^uint32(0))
+)
+
+var (
+	ErrTimeout = &timeoutError{}
+
+	wsaData syscall.WSAData
 )
 
 // struck sockaddr equivalent
@@ -46,27 +54,17 @@ type hvsockConn struct {
 
 	wg            sync.WaitGroup
 	closing       bool
-	readDeadline  time.Time
-	writeDeadline time.Time
+	readDeadline  deadlineHandler
+	writeDeadline deadlineHandler
 }
 
-// Used for async system calls
-const (
-	cFILE_SKIP_COMPLETION_PORT_ON_SUCCESS = 1
-	cFILE_SKIP_SET_EVENT_ON_HANDLE        = 2
-)
-
-var (
-	errTimeout = &timeoutError{}
-
-	wsaData syscall.WSAData
-)
-
-type timeoutError struct{}
-
-func (e *timeoutError) Error() string   { return "i/o timeout" }
-func (e *timeoutError) Timeout() bool   { return true }
-func (e *timeoutError) Temporary() bool { return true }
+type deadlineHandler struct {
+	setLock     sync.Mutex
+	channel     timeoutChan
+	channelLock sync.RWMutex
+	timer       *time.Timer
+	timedout    atomicBool
+}
 
 // Main constructor
 func newHVsockConn(h syscall.Handle, local HypervAddr, remote HypervAddr) (*HVsockConn, error) {
@@ -82,6 +80,8 @@ func newHVsockConn(h syscall.Handle, local HypervAddr, remote HypervAddr) (*HVso
 	if err != nil {
 		return nil, err
 	}
+	v.readDeadline.channel = make(timeoutChan)
+	v.writeDeadline.channel = make(timeoutChan)
 
 	return &HVsockConn{hvsockConn: *v}, nil
 }
@@ -136,7 +136,6 @@ func (v *HVsockConn) close() error {
 // Underlying raw read() function.
 func (v *HVsockConn) read(buf []byte) (int, error) {
 	var b syscall.WSABuf
-	var bytes uint32
 	var f uint32
 
 	b.Len = uint32(len(buf))
@@ -147,25 +146,29 @@ func (v *HVsockConn) read(buf []byte) (int, error) {
 		return 0, err
 	}
 
+	if v.readDeadline.timedout.isSet() {
+		return 0, ErrTimeout
+	}
+
+	var bytes uint32
 	err = syscall.WSARecv(v.fd, &b, 1, &bytes, &f, &c.o, nil)
-	n, err := v.asyncIo(c, v.readDeadline, bytes, err)
+	n, err := v.asyncIo(c, &v.readDeadline, bytes, err)
+	runtime.KeepAlive(buf)
 
 	// Handle EOF conditions.
 	if err == nil && n == 0 && len(buf) != 0 {
 		return 0, io.EOF
-	}
-	if err == syscall.ERROR_BROKEN_PIPE {
+	} else if err == syscall.ERROR_BROKEN_PIPE {
 		return 0, io.EOF
+	} else {
+		return n, err
 	}
-
-	return n, err
 }
 
 // Underlying raw write() function.
 func (v *HVsockConn) write(buf []byte) (int, error) {
 	var b syscall.WSABuf
 	var f uint32
-	var bytes uint32
 
 	if len(buf) == 0 {
 		return 0, nil
@@ -179,31 +182,55 @@ func (v *HVsockConn) write(buf []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	if v.writeDeadline.timedout.isSet() {
+		return 0, ErrTimeout
+	}
+
+	var bytes uint32
 	err = syscall.WSASend(v.fd, &b, 1, &bytes, f, &c.o, nil)
-	return v.asyncIo(c, v.writeDeadline, bytes, err)
+	n, err := v.asyncIo(c, &v.writeDeadline, bytes, err)
+	runtime.KeepAlive(buf)
+	return n, err
 }
 
 // SetReadDeadline implementation for Hyper-V sockets
-func (v *HVsockConn) SetReadDeadline(t time.Time) error {
-	v.readDeadline = t
-	return nil
+func (v *HVsockConn) SetReadDeadline(deadline time.Time) error {
+	return v.readDeadline.set(deadline)
 }
 
 // SetWriteDeadline implementation for Hyper-V sockets
-func (v *HVsockConn) SetWriteDeadline(t time.Time) error {
-	v.writeDeadline = t
-	return nil
+func (v *HVsockConn) SetWriteDeadline(deadline time.Time) error {
+	return v.writeDeadline.set(deadline)
 }
 
 // SetDeadline implementation for Hyper-V sockets
-func (v *HVsockConn) SetDeadline(t time.Time) error {
-	v.SetReadDeadline(t)
-	v.SetWriteDeadline(t)
-	return nil
+func (v *HVsockConn) SetDeadline(deadline time.Time) error {
+	if err := v.SetReadDeadline(deadline); err != nil {
+		return err
+	}
+	return v.SetWriteDeadline(deadline)
 }
 
 // The code below here is adjusted from:
 // https://github.com/Microsoft/go-winio/blob/master/file.go
+type atomicBool int32
+
+func (b *atomicBool) isSet() bool { return atomic.LoadInt32((*int32)(b)) != 0 }
+func (b *atomicBool) setFalse()   { atomic.StoreInt32((*int32)(b), 0) }
+func (b *atomicBool) setTrue()    { atomic.StoreInt32((*int32)(b), 1) }
+
+const (
+	cFILE_SKIP_COMPLETION_PORT_ON_SUCCESS = 1
+	cFILE_SKIP_SET_EVENT_ON_HANDLE        = 2
+)
+
+type timeoutError struct{}
+
+func (e *timeoutError) Error() string   { return "i/o timeout" }
+func (e *timeoutError) Timeout() bool   { return true }
+func (e *timeoutError) Temporary() bool { return true }
+
+type timeoutChan chan struct{}
 
 var ioInitOnce sync.Once
 var ioCompletionPort syscall.Handle
@@ -267,47 +294,88 @@ func ioCompletionProcessor(h syscall.Handle) {
 	}
 }
 
-// asyncIo processes the return value from ReadFile or WriteFile, blocking until
+// asyncIo processes the return value from Recv or Send, blocking until
 // the operation has actually completed.
-func (v *hvsockConn) asyncIo(c *ioOperation, deadline time.Time, bytes uint32, err error) (int, error) {
+func (v *hvsockConn) asyncIo(c *ioOperation, d *deadlineHandler, bytes uint32, err error) (int, error) {
 	if err != syscall.ERROR_IO_PENDING {
 		v.wg.Done()
 		return int(bytes), err
 	}
 
-	var r ioResult
-	wait := true
-	timedout := false
 	if v.closing {
 		cancelIoEx(v.fd, &c.o)
-	} else if !deadline.IsZero() {
-		now := time.Now()
-		if !deadline.After(now) {
-			timedout = true
-		} else {
-			timeout := time.After(deadline.Sub(now))
-			select {
-			case r = <-c.ch:
-				wait = false
-			case <-timeout:
-				timedout = true
+	}
+
+	var timeout timeoutChan
+	if d != nil {
+		d.channelLock.Lock()
+		timeout = d.channel
+		d.channelLock.Unlock()
+	}
+
+	var r ioResult
+	select {
+	case r = <-c.ch:
+		err = r.err
+		if err == syscall.ERROR_OPERATION_ABORTED {
+			if v.closing {
+				err = ErrSocketClosed
 			}
 		}
-	}
-	if timedout {
+	case <-timeout:
 		cancelIoEx(v.fd, &c.o)
-	}
-	if wait {
 		r = <-c.ch
-	}
-	err = r.err
-	if err == syscall.ERROR_OPERATION_ABORTED {
-		if v.closing {
-			err = ErrSocketClosed
-		} else if timedout {
-			err = errTimeout
+		err = r.err
+		if err == syscall.ERROR_OPERATION_ABORTED {
+			err = ErrTimeout
 		}
 	}
+
+	// runtime.KeepAlive is needed, as c is passed via native
+	// code to ioCompletionProcessor, c must remain alive
+	// until the channel read is complete.
+	runtime.KeepAlive(c)
 	v.wg.Done()
 	return int(r.bytes), err
+}
+
+func (d *deadlineHandler) set(deadline time.Time) error {
+	d.setLock.Lock()
+	defer d.setLock.Unlock()
+
+	if d.timer != nil {
+		if !d.timer.Stop() {
+			<-d.channel
+		}
+		d.timer = nil
+	}
+	d.timedout.setFalse()
+
+	select {
+	case <-d.channel:
+		d.channelLock.Lock()
+		d.channel = make(chan struct{})
+		d.channelLock.Unlock()
+	default:
+	}
+
+	if deadline.IsZero() {
+		return nil
+	}
+
+	timeoutIO := func() {
+		d.timedout.setTrue()
+		close(d.channel)
+	}
+
+	now := time.Now()
+	duration := deadline.Sub(now)
+	if deadline.After(now) {
+		// Deadline is in the future, set a timer to wait
+		d.timer = time.AfterFunc(duration, timeoutIO)
+	} else {
+		// Deadline is in the past. Cancel all pending IO now.
+		timeoutIO()
+	}
+	return nil
 }
