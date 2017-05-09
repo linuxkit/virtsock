@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	svcid, _ = hvsock.GUIDFromString("3049197C-9A4E-4FBF-9367-97F792F16994")
+	svcid, _ = hvsock.GUIDFromString("3049197C-FACB-11E6-BD58-64006A7986D3")
 )
 
 func HvsockSetVerbosity() {

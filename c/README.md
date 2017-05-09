@@ -15,9 +15,9 @@ assumes 14291, so you may have to adjust the
 
 ## Running
 
-All sample application assume a service ID of `3049197C-9A4E-4FBF-9367-97F792F16994` which needs to be registered *once* using:
+All sample application assume a service ID of `3049197C-FACB-11E6-BD58-64006A7986D3` which needs to be registered *once* using:
 ```
-$service = New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Virtualization\GuestCommunicationServices" -Name 3049197C-9A4E-4FBF-9367-97F792F16994
+$service = New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Virtualization\GuestCommunicationServices" -Name 3049197C-FACB-11E6-BD58-64006A7986D3
 
 $service.SetValue("ElementName", "Hyper-V Socket Echo Service")
 ```
