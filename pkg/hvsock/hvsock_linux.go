@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"syscall"
 	"time"
 )
 
@@ -42,6 +43,10 @@ type hvsockListener struct {
 //
 // System call wrapper
 //
+func hvsocket(typ, proto int) (int, error) {
+	return syscall.Socket(sysAF_HYPERV, typ, proto)
+}
+
 func connect(s int, a *HypervAddr) (err error) {
 	sa := C.struct_sockaddr_hv{}
 	sa.shv_family = sysAF_HYPERV

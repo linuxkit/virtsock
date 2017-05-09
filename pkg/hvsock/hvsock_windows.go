@@ -100,6 +100,10 @@ func (a HypervAddr) sockaddr(sa *rawSockaddrHyperv) (unsafe.Pointer, int32, erro
 	return unsafe.Pointer(sa), int32(unsafe.Sizeof(*sa)), nil
 }
 
+func hvsocket(typ, proto int) (syscall.Handle, error) {
+	return syscall.Socket(sysAF_HYPERV, typ, proto)
+}
+
 func connect(s syscall.Handle, a *HypervAddr) (err error) {
 	var sa rawSockaddrHyperv
 	ptr, n, err := a.sockaddr(&sa)
