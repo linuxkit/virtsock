@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"strings"
@@ -40,7 +41,7 @@ func HvsockParseClientStr(clientStr string) hvsockClient {
 }
 
 func (cl hvsockClient) String() string {
-	return cl.vmid.String()
+	return fmt.Sprintf("%s:%s", cl.vmid.String(), svcid.String())
 }
 
 func (cl hvsockClient) Dial(conid int) (Conn, error) {
@@ -49,6 +50,7 @@ func (cl hvsockClient) Dial(conid int) (Conn, error) {
 }
 
 func HvsockServerListen() net.Listener {
+	fmt.Printf("Listen on port: %s\n", svcid.String())
 	l, err := hvsock.Listen(hvsock.HypervAddr{VMID: hvsock.GUIDWildcard, ServiceID: svcid})
 	if err != nil {
 		log.Fatalln("Listen():", err)
