@@ -17,6 +17,13 @@ By default the Go sample code is build in a container. Simply type `make`.
 
 If you want to build binaries on a local system use `make build-binaries`.
 
+## Testing
+
+There are READMEs in the [./examples](./examples/README.md) and
+[./c](./c/README.md) sub-directories.  There is also a top-level
+`make` target to build a
+[linuxkit](https://github.com/linuxkit/linuxkit) image with the test
+binaries included.
 
 ## Known limitations
 

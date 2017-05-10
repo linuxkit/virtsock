@@ -50,6 +50,13 @@ build/virtsock_echo.exe: $(DEPS)
 	go build -o $@ examples/virtsock_echo.go examples/common_hvsock.go examples/common_windows.go
 
 
+# Target to build a bootable EFI ISO
+linuxkit: hvtest-efi.iso
+hvtest-efi.iso: build-in-container Dockerfile.linuxkit hvtest.yml
+	$(MAKE) -C c build-in-container
+	docker build -t hvtest-local -f Dockerfile.linuxkit .
+	moby build hvtest
+
 clean:
 	rm -rf build
 
