@@ -16,8 +16,9 @@
 #include <string.h>
 
 /* 3049197C-FACB-11E6-BD58-64006A7986D3 */
-DEFINE_GUID(BM_GUID,
+DEFINE_GUID(SERVICE_GUID,
     0x3049197c, 0xfacb, 0x11e6, 0xbd, 0x58, 0x64, 0x00, 0x6a, 0x79, 0x86, 0xd3);
+#define SERVICE_PORT 0x3049197c
 
 /* Maximum amount of data for a single send()/recv() call.
  * Note: On Windows the maximum length seems to be 8KB and if larger
@@ -33,6 +34,8 @@ DEFINE_GUID(BM_GUID,
 
 /* Global flag to alternate between short and long send()/recv() buffers */
 static int opt_alternate;
+ /* Use the vsock interface on Linux */
+static int opt_vsock;
 
 static int verbose;
 #define INFO(...)                                                       \
@@ -136,25 +139,37 @@ out:
 static int server(int multi_threaded, int max_conn)
 {
     SOCKET lsock, csock;
-    SOCKADDR_HV sa, sac;
-    socklen_t socklen = sizeof(sac);
+    SOCKADDR_VM savm, sacvm;
+    SOCKADDR_HV sahv, sachv;
+    socklen_t socklen;
     struct svr_args *args;
     THREAD_HANDLE st;
     int conn = 0;
     int res;
 
-    lsock = socket(AF_HYPERV, SOCK_STREAM, HV_PROTOCOL_RAW);
+    if (opt_vsock)
+        lsock = socket(AF_VSOCK, SOCK_STREAM, 0);
+    else
+        lsock = socket(AF_HYPERV, SOCK_STREAM, HV_PROTOCOL_RAW);
     if (lsock == INVALID_SOCKET) {
         sockerr("socket()");
         return 1;
     }
 
-    sa.Family = AF_HYPERV;
-    sa.Reserved = 0;
-    sa.VmId = HV_GUID_WILDCARD;
-    sa.ServiceId = MY_SERVICE_GUID;
+    memset(&savm, 0, sizeof(savm));
+    savm.Family = AF_VSOCK;
+    savm.SvmPort = SERVICE_PORT;
+    savm.SvmCID = VMADDR_CID_ANY; /* Ignore target here */
 
-    res = bind(lsock, (const struct sockaddr *)&sa, sizeof(sa));
+    memset(&sahv, 0, sizeof(sahv));
+    sahv.Family = AF_HYPERV;
+    sahv.VmId = HV_GUID_WILDCARD;
+    sahv.ServiceId = SERVICE_GUID;
+
+    if (opt_vsock)
+        res = bind(lsock, (const struct sockaddr *)&savm, sizeof(savm));
+    else
+        res = bind(lsock, (const struct sockaddr *)&sahv, sizeof(sahv));
     if (res == SOCKET_ERROR) {
         sockerr("bind()");
         closesocket(lsock);
@@ -169,15 +184,27 @@ static int server(int multi_threaded, int max_conn)
     }
 
     while(1) {
-        csock = accept(lsock, (struct sockaddr *)&sac, &socklen);
+        memset(&sacvm, 0, sizeof(sacvm));
+        memset(&sachv, 0, sizeof(sachv));
+        if (opt_vsock) {
+            socklen = sizeof(sacvm);
+            csock = accept(lsock, (struct sockaddr *)&sacvm, &socklen);
+        } else {
+            socklen = sizeof(sachv);
+            csock = accept(lsock, (struct sockaddr *)&sachv, &socklen);
+        }
         if (csock == INVALID_SOCKET) {
             sockerr("accept()");
             closesocket(lsock);
             return 1;
         }
 
-        DBG("Connect from: "GUID_FMT":"GUID_FMT" fd=%d\n",
-            GUID_ARGS(sac.VmId), GUID_ARGS(sac.ServiceId), (int)csock);
+        if (opt_vsock)
+            DBG("Connect from: 0x%08x.0x%08x\n", sacvm.SvmCID, sacvm.SvmPort);
+        else
+            DBG("Connect from: "GUID_FMT":"GUID_FMT"\n",
+                GUID_ARGS(sachv.VmId), GUID_ARGS(sachv.ServiceId));
+
 
         /* Spin up a new thread per connection. Not the most
          * efficient, but stops us from having to faff about with
@@ -272,7 +299,8 @@ static int client_one(GUID target, int id, int conn)
     struct client_tx_args args;
     uint64_t start, end, diff;
     THREAD_HANDLE st;
-    SOCKADDR_HV sa;
+    SOCKADDR_VM savm;
+    SOCKADDR_HV sahv;
     SOCKET fd;
     char recvbuf[RXTX_BUF_LEN];
     int rxlen = RXTX_SMALL_LEN;
@@ -284,27 +312,35 @@ static int client_one(GUID target, int id, int conn)
 
     start = time_ns();
 
-    fd = socket(AF_HYPERV, SOCK_STREAM, HV_PROTOCOL_RAW);
+        if (opt_vsock)
+        fd = socket(AF_VSOCK, SOCK_STREAM, 0);
+    else
+        fd = socket(AF_HYPERV, SOCK_STREAM, HV_PROTOCOL_RAW);
     if (fd == INVALID_SOCKET) {
         sockerr("socket()");
         return 1;
     }
 
-    sa.Family = AF_HYPERV;
-    sa.Reserved = 0;
-    sa.VmId = target;
-    sa.ServiceId = MY_SERVICE_GUID;
-
-    TRC("[%02d:%05d] Connect to: "GUID_FMT":"GUID_FMT"\n",
-        id, conn, GUID_ARGS(sa.VmId), GUID_ARGS(sa.ServiceId));
-
-    res = connect(fd, (const struct sockaddr *)&sa, sizeof(sa));
+    if (opt_vsock) {
+        savm.Family = AF_VSOCK;
+        savm.SvmPort = SERVICE_PORT;
+        savm.SvmCID = VMADDR_CID_ANY; /* Ignore target here */
+        DBG("[%02d:%05d] Connected to: 0x%08x.0x%08x fd=%d\n",
+            id, conn, savm.SvmCID, savm.SvmPort, (int)fd);
+        res = connect(fd, (const struct sockaddr *)&savm, sizeof(savm));
+    } else {
+        sahv.Family = AF_HYPERV;
+        sahv.Reserved = 0;
+        sahv.VmId = target;
+        sahv.ServiceId = SERVICE_GUID;
+        DBG("[%02d:%05d] Connected to: "GUID_FMT":"GUID_FMT" fd=%d\n",
+            id, conn, GUID_ARGS(sahv.VmId), GUID_ARGS(sahv.ServiceId), (int)fd);
+        res = connect(fd, (const struct sockaddr *)&sahv, sizeof(sahv));
+    }
     if (res == SOCKET_ERROR) {
         sockerr("connect()");
         goto out;
     }
-    DBG("[%02d:%05d] Connected to: "GUID_FMT":"GUID_FMT" fd=%d\n",
-        id, conn, GUID_ARGS(sa.VmId), GUID_ARGS(sa.ServiceId), (int)fd);
 
     if (RAND_MAX < MAX_DATA_LEN)
         tosend = (int)((1ULL * RAND_MAX + 1) * rand() + rand());
@@ -389,6 +425,7 @@ void usage(char *name)
     printf("Common options\n");
     printf(" -i <conns> Number connections the client makes (default %d)\n",
            DEFAULT_CLIENT_CONN);
+    printf(" -vsock     Use vsock (Linux only)\n");
     printf(" -a         Alternate using short/long send()/recv() buffers\n");
     printf(" -v         Verbose output (use multiple times)\n");
 }
@@ -456,6 +493,8 @@ int __cdecl main(int argc, char **argv)
             opt_rand = 1;
         } else if (strcmp(argv[i], "-1") == 0) {
             opt_multi_thds = 0;
+        } else if (strcmp(argv[i], "-vsock") == 0) {
+            opt_vsock = 1;
         } else if (strcmp(argv[i], "-a") == 0) {
             opt_alternate = 1;
         } else if (strcmp(argv[i], "-v") == 0) {
@@ -465,6 +504,13 @@ int __cdecl main(int argc, char **argv)
             goto out;
         }
     }
+
+#ifdef _MSC_VER
+    if (opt_vsock) {
+        fprintf(stderr, "-vsock is not valid on Windows\n");
+        goto out;
+    }
+#endif
 
     if (opt_server) {
         server(opt_multi_thds, opt_conns);

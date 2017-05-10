@@ -10,6 +10,7 @@
 /* 3049197C-FACB-11E6-BD58-64006A7986D3 */
 DEFINE_GUID(BM_GUID,
     0x3049197c, 0xfacb, 0x11e6, 0xbd, 0x58, 0x64, 0x00, 0x6a, 0x79, 0x86, 0xd3);
+#define BM_PORT 0x3049197c
 
 #ifdef _MSC_VER
 static WSADATA wsaData;
@@ -65,6 +66,8 @@ enum benchmark {
  * epoll()/WSAPoll().  This flags switches between the two
  */
 static int opt_poll;
+/* Use the vsock interface on Linux */
+static int opt_vsock;
 
 
 /* Bandwidth tests:
@@ -170,30 +173,41 @@ err_out:
 static int server(int bm, int msg_sz)
 {
     SOCKET lsock, csock;
-    SOCKADDR_HV sa, sac;
-    socklen_t socklen = sizeof(sac);
+    SOCKADDR_VM savm, sacvm;
+    SOCKADDR_HV sahv, sachv;
+    socklen_t socklen;
     int max_conn;
     int ret = 0;
 
     INFO("server: bm=%d msg_sz=%d\n", bm, msg_sz);
 
-    lsock = socket(AF_HYPERV, SOCK_STREAM, HV_PROTOCOL_RAW);
+    if (opt_vsock)
+        lsock = socket(AF_VSOCK, SOCK_STREAM, 0);
+    else
+        lsock = socket(AF_HYPERV, SOCK_STREAM, HV_PROTOCOL_RAW);
     if (lsock == INVALID_SOCKET) {
         sockerr("socket()");
-        return -1;
+        return 1;
     }
 
-    memset(&sa, 0, sizeof(sa));
-    sa.Family = AF_HYPERV;
-    sa.Reserved = 0;
-    sa.VmId = HV_GUID_WILDCARD;
-    sa.ServiceId = BM_GUID;
+    memset(&savm, 0, sizeof(savm));
+    savm.Family = AF_VSOCK;
+    savm.SvmPort = BM_PORT;
+    savm.SvmCID = VMADDR_CID_ANY; /* Ignore target here */
 
-    ret = bind(lsock, (const struct sockaddr *)&sa, sizeof(sa));
+    memset(&sahv, 0, sizeof(sahv));
+    sahv.Family = AF_HYPERV;
+    sahv.VmId = HV_GUID_WILDCARD;
+    sahv.ServiceId = BM_GUID;
+
+    if (opt_vsock)
+        ret = bind(lsock, (const struct sockaddr *)&savm, sizeof(savm));
+    else
+        ret = bind(lsock, (const struct sockaddr *)&sahv, sizeof(sahv));
     if (ret == SOCKET_ERROR) {
         sockerr("bind()");
         closesocket(lsock);
-        return -1;
+        return 1;
     }
 
     ret = listen(lsock, SOMAXCONN);
@@ -212,8 +226,15 @@ static int server(int bm, int msg_sz)
     while (max_conn) {
         max_conn--;
 
-        memset(&sac, 0, sizeof(sac));
-        csock = accept(lsock, (struct sockaddr *)&sac, &socklen);
+        memset(&sacvm, 0, sizeof(sacvm));
+        memset(&sachv, 0, sizeof(sachv));
+        if (opt_vsock) {
+            socklen = sizeof(sacvm);
+            csock = accept(lsock, (struct sockaddr *)&sacvm, &socklen);
+        } else {
+            socklen = sizeof(sachv);
+            csock = accept(lsock, (struct sockaddr *)&sachv, &socklen);
+        }
         if (csock == INVALID_SOCKET) {
             sockerr("accept()");
             ret = -1;
@@ -240,25 +261,36 @@ err_out:
 static int client(GUID target, int bm, int msg_sz)
 {
     SOCKET fd;
-    SOCKADDR_HV sa;
+    SOCKADDR_VM savm;
+    SOCKADDR_HV sahv;
     uint64_t res;
     int ret = 0;
 
     INFO("client: bm=%d msg_sz=%d\n", bm, msg_sz);
 
-    fd = socket(AF_HYPERV, SOCK_STREAM, HV_PROTOCOL_RAW);
+    if (opt_vsock)
+        fd = socket(AF_VSOCK, SOCK_STREAM, 0);
+    else
+        fd = socket(AF_HYPERV, SOCK_STREAM, HV_PROTOCOL_RAW);
     if (fd == INVALID_SOCKET) {
         sockerr("socket()");
-        return -1;
+        return 1;
     }
 
-    memset(&sa, 0, sizeof(sa));
-    sa.Family = AF_HYPERV;
-    sa.Reserved = 0;
-    sa.VmId = target;
-    sa.ServiceId = BM_GUID;
+    memset(&sahv, 0, sizeof(sahv));
+    savm.Family = AF_VSOCK;
+    savm.SvmPort = BM_PORT;
+    savm.SvmCID = VMADDR_CID_ANY; /* Ignore target here */
 
-    ret = connect(fd, (const struct sockaddr *)&sa, sizeof(sa));
+    memset(&sahv, 0, sizeof(sahv));
+    sahv.Family = AF_HYPERV;
+    sahv.VmId = target;
+    sahv.ServiceId = BM_GUID;
+
+    if (opt_vsock)
+        ret = connect(fd, (const struct sockaddr *)&savm, sizeof(savm));
+    else
+        ret = connect(fd, (const struct sockaddr *)&sahv, sizeof(sahv));
     if (ret == SOCKET_ERROR) {
         sockerr("connect()");
         ret = -1;
@@ -292,7 +324,8 @@ static int client_conn(GUID target)
 {
     uint64_t start, end, diff;
     int histogram[3 * 9 + 3];
-    SOCKADDR_HV sa;
+    SOCKADDR_VM savm;
+    SOCKADDR_HV sahv;
     SOCKET fd;
     int sum;
     int ret;
@@ -303,26 +336,40 @@ static int client_conn(GUID target)
     INFO("client: connection test\n");
 
     for (i = 0; i < BM_CONNS; i++) {
-        fd = socket(AF_HYPERV, SOCK_STREAM, HV_PROTOCOL_RAW);
+        if (opt_vsock)
+            fd = socket(AF_VSOCK, SOCK_STREAM, 0);
+        else
+            fd = socket(AF_HYPERV, SOCK_STREAM, HV_PROTOCOL_RAW);
         if (fd == INVALID_SOCKET) {
             histogram[ARRAY_SIZE(histogram) - 1] += 1;
             DBG("conn: %d -> socket error\n", i);
             continue;
         }
 
-        memset(&sa, 0, sizeof(sa));
-        sa.Family = AF_HYPERV;
-        sa.Reserved = 0;
-        sa.VmId = target;
-        sa.ServiceId = BM_GUID;
+        memset(&sahv, 0, sizeof(sahv));
+        savm.Family = AF_VSOCK;
+        savm.SvmPort = BM_PORT;
+        savm.SvmCID = VMADDR_CID_ANY; /* Ignore target here */
+
+        memset(&sahv, 0, sizeof(sahv));
+        sahv.Family = AF_HYPERV;
+        sahv.VmId = target;
+        sahv.ServiceId = BM_GUID;
 
         start = time_ns();
 
         if (opt_poll)
-            ret = connect_ex(fd, (const struct sockaddr *)&sa, sizeof(sa),
-                             BM_CONN_TIMEOUT);
+            if (opt_vsock)
+                ret = connect_ex(fd, (const struct sockaddr *)&savm, sizeof(savm),
+                                 BM_CONN_TIMEOUT);
+            else
+                ret = connect_ex(fd, (const struct sockaddr *)&sahv, sizeof(sahv),
+                                 BM_CONN_TIMEOUT);
         else
-            ret = connect(fd, (const struct sockaddr *)&sa, sizeof(sa));
+            if (opt_vsock)
+                ret = connect(fd, (const struct sockaddr *)&savm, sizeof(savm));
+            else
+                ret = connect(fd, (const struct sockaddr *)&sahv, sizeof(sahv));
 
         if (ret == SOCKET_ERROR) {
             histogram[ARRAY_SIZE(histogram) - 2] += 1;
@@ -387,6 +434,7 @@ void usage(char *name)
     printf(" -L        Latency test\n");
     printf(" -C        Connection test\n");
     printf("\n");
+    printf(" -vsock    Use vsock (Linux only)\n");
     printf(" -m <sz>   Message size in bytes\n");
     printf(" -p        Use poll instead of blocking send()/recv()\n");
     printf(" -v        Verbose output\n");
@@ -441,6 +489,8 @@ int __cdecl main(int argc, char **argv)
         } else if (strcmp(argv[i], "-C") == 0) {
             opt_bm = BM_CONN;
 
+        } else if (strcmp(argv[i], "-vsock") == 0) {
+            opt_vsock = 1;
         } else if (strcmp(argv[i], "-m") == 0) {
             if (i + 1 >= argc) {
                 fprintf(stderr, "-m requires an argument\n");
@@ -457,6 +507,13 @@ int __cdecl main(int argc, char **argv)
             goto out;
         }
     }
+
+#ifdef _MSC_VER
+    if (opt_vsock) {
+        fprintf(stderr, "-vsock is not valid on Windows\n");
+        goto out;
+    }
+#endif
 
     if (!opt_bm) {
         fprintf(stderr, "You need to specify a test\n");
