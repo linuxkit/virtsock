@@ -91,7 +91,7 @@ static void *handle(void *a)
     int sent;
     int res;
 
-    TRC("[%05d] server thread: Handle fd=%d\n", args->conn, (int)args->fd);
+    TRC("[%05d] server: handle fd=%d\n", args->conn, (int)args->fd);
 
     start = time_ns();
 
@@ -108,6 +108,8 @@ static void *handle(void *a)
             sockerr("recv()");
             goto out;
         }
+        TRC("[%05d] server: fd=%d RX %d bytes\n",
+            args->conn, (int)args->fd, received);
 
         sent = 0;
         while (sent < received) {
@@ -117,6 +119,8 @@ static void *handle(void *a)
                 goto out;
             }
             sent += res;
+            TRC("[%05d] server: fd=%d TX %d bytes\n",
+                args->conn, (int)args->fd, res);
         }
         total_bytes += sent;
     }
@@ -285,6 +289,7 @@ static void *client_tx(void *a)
             sockerr(tmp);
             goto out;
         }
+        TRC("[%02d:%05d] client: TX %d bytes\n", args->id, args->conn, res);
         tosend -= res;
     }
     DBG("[%02d:%05d] TX: %9d bytes sent\n", args->id, args->conn, args->tosend);
@@ -372,6 +377,7 @@ static int client_one(GUID target, int id, int conn)
             res = 1;
             goto thout;
         }
+        TRC("[%02d:%05d] client: RX %d bytes\n", id, conn, res);
         received += res;
     }
 
