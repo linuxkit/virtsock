@@ -103,7 +103,7 @@ var (
 
 // Dial a Hyper-V socket address
 func Dial(raddr HypervAddr) (Conn, error) {
-	fd, err := syscall.Socket(sysAF_HYPERV, syscall.SOCK_STREAM, sysSHV_PROTO_RAW)
+	fd, err := hvsocket(syscall.SOCK_STREAM, sysSHV_PROTO_RAW)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +124,7 @@ func Dial(raddr HypervAddr) (Conn, error) {
 // Listen on a Hyper-V socket address
 func Listen(addr HypervAddr) (net.Listener, error) {
 
-	acceptFD, err := syscall.Socket(sysAF_HYPERV, syscall.SOCK_STREAM, sysSHV_PROTO_RAW)
+	acceptFD, err := hvsocket(syscall.SOCK_STREAM, sysSHV_PROTO_RAW)
 	if err != nil {
 		return nil, err
 	}

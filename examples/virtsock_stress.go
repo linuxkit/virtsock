@@ -85,10 +85,10 @@ func main() {
 	}
 
 	cl := ParseClientStr(clientStr)
+	fmt.Printf("Client connecting to %s\n", cl.String())
 
 	if parallel <= 1 {
 		// No parallelism, run in the main thread.
-		fmt.Printf("Client connecting to %s\n", cl.String())
 		for i := 0; i < connections; i++ {
 			client(cl, i)
 			time.Sleep(time.Duration(sleepTime) * time.Second)
