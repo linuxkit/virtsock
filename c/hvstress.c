@@ -64,6 +64,26 @@ static int verbose;
 static WSADATA wsaData;
 #endif
 
+static unsigned char sendbuf[RXTX_BUF_LEN];
+
+/* A simple hexdump */
+static void dump(int id, int conn, const unsigned char *b, int len)
+{
+    int i, c;
+
+    for (i = 0; i < (len + 16 - 1 - (len - 1) % 16); i += 16) {
+        printf("[%02d:%05d] %04x: ", id, conn, i);
+        for (c = i; c < i + 8; c++)
+            if ( c < len)
+                printf("%02x ", b[c]);
+        printf("  ");
+        for (c = i + 8; c < i + 16; c++)
+            if ( c < len)
+                printf("%02x ", b[c]);
+        printf("\n");
+    }
+    fflush(stdout);
+}
 
 /* Server code
  *
@@ -269,7 +289,6 @@ struct client_tx_args {
 static void *client_tx(void *a)
 {
     struct client_tx_args *args = a;
-    char sendbuf[RXTX_BUF_LEN];
     char tmp[128];
     int tosend, txlen = RXTX_SMALL_LEN;
     int res;
@@ -307,7 +326,7 @@ static int client_one(GUID target, int id, int conn)
     SOCKADDR_VM savm;
     SOCKADDR_HV sahv;
     SOCKET fd;
-    char recvbuf[RXTX_BUF_LEN];
+    unsigned char recvbuf[RXTX_BUF_LEN];
     int rxlen = RXTX_SMALL_LEN;
     char tmp[128];
     int tosend, received = 0;
@@ -378,6 +397,8 @@ static int client_one(GUID target, int id, int conn)
             goto thout;
         }
         TRC("[%02d:%05d] client: RX %d bytes\n", id, conn, res);
+        if (verbose > 3)
+            dump(id, conn, recvbuf, res);
         received += res;
     }
 
@@ -529,6 +550,14 @@ int __cdecl main(int argc, char **argv)
     if (opt_server) {
         server(opt_multi_thds, opt_conns);
     } else {
+        /* Initialise the send buffer with a known pattern */
+        for (i = 0; i < RXTX_BUF_LEN; i++) {
+            if ((i >> 8) % 2)
+                sendbuf[i] = i & 0xff;
+            else
+                sendbuf[i] = 0xff - (i & 0xff);
+        }
+
         args = calloc(opt_par, sizeof(*args));
         if (!args) {
             fprintf(stderr, "failed to malloc");
