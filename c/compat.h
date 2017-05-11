@@ -104,6 +104,27 @@ DEFINE_GUID(HV_GUID_PARENT,
 
 #endif /* !_MSC_VER */
 
+/* Common definitions (only valid on Linux, though) */
+#ifndef AF_VSOCK
+#define AF_VSOCK 40
+#endif
+#ifndef VMADDR_CID_ANY
+#define VMADDR_CID_ANY -1U
+#endif
+typedef struct _SOCKADDR_VM
+{
+    unsigned short Family;
+    unsigned short Reserved;
+    unsigned int SvmPort;
+    unsigned int SvmCID;
+#ifndef _MSC_VER
+    unsigned char svm_zero[sizeof(struct sockaddr) -
+                           sizeof(sa_family_t) - sizeof(unsigned short) -
+                           sizeof(unsigned int) - sizeof(unsigned int)];
+#endif
+} SOCKADDR_VM;
+
+
 /* Thread wrappers */
 #ifdef _MSC_VER
 typedef HANDLE THREAD_HANDLE;

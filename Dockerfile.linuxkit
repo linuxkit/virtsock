@@ -1,0 +1,4 @@
+FROM scratch
+COPY ./c/build/* /usr/bin/
+COPY ./build/virtsock_echo.linux /usr/bin/virtsock_echo
+COPY ./build/virtsock_stress.linux /usr/bin/virtsock_stress
