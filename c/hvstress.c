@@ -27,11 +27,11 @@ DEFINE_GUID(SERVICE_GUID,
 #define RXTX_BUF_LEN (4 * 1024)
 /* Small send()/recv() lengths */
 #define RXTX_SMALL_LEN 4
-/* Maximum amount of data transferred over a single connection */
-#define MAX_DATA_LEN (20 * 1024 * 1024)
 /* Default number of connections made by the client */
 #define DEFAULT_CLIENT_CONN 100
 
+/* Maximum amount of data to send per connection */
+static int opt_max_len = 20 * 1024 * 1024;
 /* Global flag to alternate between short and long send()/recv() buffers */
 static int opt_alternate;
  /* Use the vsock interface on Linux */
@@ -347,12 +347,12 @@ static int client_one(GUID target, int id, int conn)
         goto out;
     }
 
-    if (RAND_MAX < MAX_DATA_LEN)
+    if (RAND_MAX < opt_max_len)
         tosend = (int)((1ULL * RAND_MAX + 1) * rand() + rand());
     else
         tosend = rand();
 
-    tosend = tosend % (MAX_DATA_LEN - 1) + 1;
+    tosend = tosend % (opt_max_len - 1) + 1;
 
     DBG("[%02d:%05d] TOSEND: %d bytes\n", id, conn, tosend);
     args.fd = fd;
@@ -426,6 +426,7 @@ void usage(char *name)
     printf("   'parent':   Connect to the parent partition\n");
     printf("   <guid>:     Connect to VM with GUID\n");
     printf(" -p <num>   Run 'num' connections in parallel (default 1)\n");
+    printf(" -m <num>   Maximum amount of data to send per connection\n");
     printf(" -r         Initialise random number generator with the time\n");
     printf("\n");
     printf("Common options\n");
@@ -495,6 +496,13 @@ int __cdecl main(int argc, char **argv)
                 goto out;
             }
             opt_par = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-m") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "-p requires an argument\n");
+                usage(argv[0]);
+                goto out;
+            }
+            opt_max_len = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-r") == 0) {
             opt_rand = 1;
         } else if (strcmp(argv[i], "-1") == 0) {
