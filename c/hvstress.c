@@ -27,11 +27,11 @@ DEFINE_GUID(SERVICE_GUID,
 #define RXTX_BUF_LEN (4 * 1024)
 /* Small send()/recv() lengths */
 #define RXTX_SMALL_LEN 4
-/* Maximum amount of data transferred over a single connection */
-#define MAX_DATA_LEN (20 * 1024 * 1024)
 /* Default number of connections made by the client */
 #define DEFAULT_CLIENT_CONN 100
 
+/* Maximum amount of data to send per connection */
+static int opt_max_len = 20 * 1024 * 1024;
 /* Global flag to alternate between short and long send()/recv() buffers */
 static int opt_alternate;
  /* Use the vsock interface on Linux */
@@ -64,6 +64,26 @@ static int verbose;
 static WSADATA wsaData;
 #endif
 
+static unsigned char sendbuf[RXTX_BUF_LEN];
+
+/* A simple hexdump */
+static void dump(int id, int conn, const unsigned char *b, int len)
+{
+    int i, c;
+
+    for (i = 0; i < (len + 16 - 1 - (len - 1) % 16); i += 16) {
+        printf("[%02d:%05d] %04x: ", id, conn, i);
+        for (c = i; c < i + 8; c++)
+            if ( c < len)
+                printf("%02x ", b[c]);
+        printf("  ");
+        for (c = i + 8; c < i + 16; c++)
+            if ( c < len)
+                printf("%02x ", b[c]);
+        printf("\n");
+    }
+    fflush(stdout);
+}
 
 /* Server code
  *
@@ -269,7 +289,6 @@ struct client_tx_args {
 static void *client_tx(void *a)
 {
     struct client_tx_args *args = a;
-    char sendbuf[RXTX_BUF_LEN];
     char tmp[128];
     int tosend, txlen = RXTX_SMALL_LEN;
     int res;
@@ -307,7 +326,7 @@ static int client_one(GUID target, int id, int conn)
     SOCKADDR_VM savm;
     SOCKADDR_HV sahv;
     SOCKET fd;
-    char recvbuf[RXTX_BUF_LEN];
+    unsigned char recvbuf[RXTX_BUF_LEN];
     int rxlen = RXTX_SMALL_LEN;
     char tmp[128];
     int tosend, received = 0;
@@ -347,12 +366,12 @@ static int client_one(GUID target, int id, int conn)
         goto out;
     }
 
-    if (RAND_MAX < MAX_DATA_LEN)
+    if (RAND_MAX < opt_max_len)
         tosend = (int)((1ULL * RAND_MAX + 1) * rand() + rand());
     else
         tosend = rand();
 
-    tosend = tosend % (MAX_DATA_LEN - 1) + 1;
+    tosend = tosend % (opt_max_len - 1) + 1;
 
     DBG("[%02d:%05d] TOSEND: %d bytes\n", id, conn, tosend);
     args.fd = fd;
@@ -378,6 +397,8 @@ static int client_one(GUID target, int id, int conn)
             goto thout;
         }
         TRC("[%02d:%05d] client: RX %d bytes\n", id, conn, res);
+        if (verbose > 3)
+            dump(id, conn, recvbuf, res);
         received += res;
     }
 
@@ -426,6 +447,7 @@ void usage(char *name)
     printf("   'parent':   Connect to the parent partition\n");
     printf("   <guid>:     Connect to VM with GUID\n");
     printf(" -p <num>   Run 'num' connections in parallel (default 1)\n");
+    printf(" -m <num>   Maximum amount of data to send per connection\n");
     printf(" -r         Initialise random number generator with the time\n");
     printf("\n");
     printf("Common options\n");
@@ -495,6 +517,13 @@ int __cdecl main(int argc, char **argv)
                 goto out;
             }
             opt_par = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-m") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "-p requires an argument\n");
+                usage(argv[0]);
+                goto out;
+            }
+            opt_max_len = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-r") == 0) {
             opt_rand = 1;
         } else if (strcmp(argv[i], "-1") == 0) {
@@ -521,6 +550,14 @@ int __cdecl main(int argc, char **argv)
     if (opt_server) {
         server(opt_multi_thds, opt_conns);
     } else {
+        /* Initialise the send buffer with a known pattern */
+        for (i = 0; i < RXTX_BUF_LEN; i++) {
+            if ((i >> 8) % 2)
+                sendbuf[i] = i & 0xff;
+            else
+                sendbuf[i] = 0xff - (i & 0xff);
+        }
+
         args = calloc(opt_par, sizeof(*args));
         if (!args) {
             fprintf(stderr, "failed to malloc");
