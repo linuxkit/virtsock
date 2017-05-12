@@ -8,9 +8,9 @@ ENV GOPATH=/go
 ENV PATH=/go/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # The project sources
-ADD ./ /go/src/github.com/rneugeba/virtsock
-WORKDIR /go/src/github.com/rneugeba/virtsock
+ADD ./ /go/src/github.com/linuxkit/virtsock
+WORKDIR /go/src/github.com/linuxkit/virtsock
 
-VOLUME [ "/go/src/github.com/rneugeba/virtsock/build" ]
+VOLUME [ "/go/src/github.com/linuxkit/virtsock/build" ]
 
 CMD make build-binaries

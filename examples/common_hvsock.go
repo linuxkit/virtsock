@@ -6,7 +6,7 @@ import (
 	"net"
 	"strings"
 
-	"github.com/rneugeba/virtsock/pkg/hvsock"
+	"github.com/linuxkit/virtsock/pkg/hvsock"
 )
 
 var (
