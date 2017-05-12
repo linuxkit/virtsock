@@ -1,123 +1,87 @@
-// +build linux
+// This provides the Linux guest bindings to the VM sockets. VM
+// sockets are a generic mechanism for guest<->host communication. It
+// was originally developed for VMware but now also supports virtio
+// sockets and (soon) Hyper-V sockets.
 
 package vsock
-
-// This provides the Linux guest bindings to the virtio socket device
 
 import (
 	"errors"
 	"fmt"
 	"net"
 	"os"
-	"syscall"
 	"time"
-)
-
-/* No way to teach net or syscall about vsock sockaddr, so go right to C */
-
-/*
-#include <sys/socket.h>
-
-struct sockaddr_vm {
-	sa_family_t svm_family;
-	unsigned short svm_reserved1;
-	unsigned int svm_port;
-	unsigned int svm_cid;
-	unsigned char svm_zero[sizeof(struct sockaddr) -
-		sizeof(sa_family_t) - sizeof(unsigned short) -
-		sizeof(unsigned int) - sizeof(unsigned int)];
-};
-
-int bind_sockaddr_vm(int fd, const struct sockaddr_vm *sa_vm) {
-    return bind(fd, (const struct sockaddr*)sa_vm, sizeof(*sa_vm));
-}
-int connect_sockaddr_vm(int fd, const struct sockaddr_vm *sa_vm) {
-    return connect(fd, (const struct sockaddr*)sa_vm, sizeof(*sa_vm));
-}
-int accept_vm(int fd, struct sockaddr_vm *sa_vm, socklen_t *sa_vm_len) {
-    return accept4(fd, (struct sockaddr *)sa_vm, sa_vm_len, 0);
-}
-*/
-import "C"
-
-const (
-	AF_VSOCK = 40
+	"syscall"
+	
+	"golang.org/x/sys/unix"
 )
 
 // SocketMode is a NOOP on Linux
 func SocketMode(m string) {
 }
 
-func Dial(cid, port uint) (Conn, error) {
-	fd, err := syscall.Socket(AF_VSOCK, syscall.SOCK_STREAM, 0)
+// Dial connects to the CID.Port via virtio sockets
+func Dial(cid, port uint32) (Conn, error) {
+	fd, err := syscall.Socket(unix.AF_VSOCK, syscall.SOCK_STREAM, 0)
 	if err != nil {
 		return nil, err
 	}
-
-	sa := C.struct_sockaddr_vm{}
-	sa.svm_family = AF_VSOCK
-	sa.svm_port = C.uint(port)
-	sa.svm_cid = C.uint(cid)
-
-	if ret, errno := C.connect_sockaddr_vm(C.int(fd), &sa); ret != 0 {
+	sa := &unix.SockaddrVM{CID: cid, Port: port}
+	if err = unix.Connect(fd, sa); err != nil {
 		return nil, errors.New(fmt.Sprintf(
-			"failed bind connect to %08x.%08x, returned %d, errno %d: %s",
-			sa.svm_cid, sa.svm_port, ret, errno, errno))
+			"failed connect() to %08x.%08x: %s", cid, port, err))
 	}
-
 	return newVsockConn(uintptr(fd), port)
 }
 
-// Listen returns a net.Listener which can accept connections on the given
-// vhan port.
-func Listen(cid, port uint) (net.Listener, error) {
-	accept_fd, err := syscall.Socket(AF_VSOCK, syscall.SOCK_STREAM, 0)
+// Listen returns a net.Listener which can accept connections on the given port
+func Listen(cid, port uint32) (net.Listener, error) {
+	fd, err := syscall.Socket(unix.AF_VSOCK, syscall.SOCK_STREAM, 0)
 	if err != nil {
 		return nil, err
 	}
 
-	sa := C.struct_sockaddr_vm{}
-	sa.svm_family = AF_VSOCK
-	sa.svm_port = C.uint(port)
-	sa.svm_cid = C.uint(cid)
-
-	if ret, errno := C.bind_sockaddr_vm(C.int(accept_fd), &sa); ret != 0 {
+	sa := &unix.SockaddrVM{CID: cid, Port: port}
+	if err = unix.Bind(fd, sa); err != nil {
 		return nil, errors.New(fmt.Sprintf(
-			"failed bind vsock connection to %08x.%08x, returned %d, errno %d: %s",
-			sa.svm_cid, sa.svm_port, ret, errno, errno))
+			"failed bind() to %08x.%08x: %s", cid, port, err))
 	}
-
-	err = syscall.Listen(accept_fd, syscall.SOMAXCONN)
+	
+	err = syscall.Listen(fd, syscall.SOMAXCONN)
 	if err != nil {
 		return nil, err
 	}
-	return &vsockListener{accept_fd, port}, nil
+	return &vsockListener{fd, cid, port}, nil
 }
 
 type vsockListener struct {
-	accept_fd int
-	port      uint
+	fd   int
+	cid  uint32
+	port uint32
 }
 
+// Accept implements the Accept method in the Listener interface; it
+// waits for the next call and returns a generic Conn.
 func (v *vsockListener) Accept() (net.Conn, error) {
-	var accept_sa C.struct_sockaddr_vm
-	var accept_sa_len C.socklen_t
-
-	accept_sa_len = C.sizeof_struct_sockaddr_vm
-	fd, err := C.accept_vm(C.int(v.accept_fd), &accept_sa, &accept_sa_len)
+	fd, _, err := unix.Accept(v.fd)
 	if err != nil {
 		return nil, err
 	}
 	return newVsockConn(uintptr(fd), v.port)
 }
 
+// Close implements the Close method in the Listener interface; it
+// closes the Listening connection.
 func (v *vsockListener) Close() error {
 	// Note this won't cause the Accept to unblock.
-	return syscall.Close(v.accept_fd)
+	return unix.Close(v.fd)
 }
 
+
+//
 type VsockAddr struct {
-	Port uint
+	CID uint32
+	Port uint32
 }
 
 func (a VsockAddr) Network() string {
@@ -125,11 +89,11 @@ func (a VsockAddr) Network() string {
 }
 
 func (a VsockAddr) String() string {
-	return fmt.Sprintf("%08x", a.Port)
+	return fmt.Sprintf("%08x.%08x", a.CID, a.Port)
 }
 
 func (v *vsockListener) Addr() net.Addr {
-	return VsockAddr{Port: v.port}
+	return VsockAddr{CID: v.cid, Port: v.port}
 }
 
 // a wrapper around FileConn which supports CloseRead and CloseWrite
@@ -144,10 +108,10 @@ type VsockConn struct {
 	vsockConn
 }
 
-func newVsockConn(fd uintptr, localPort uint) (*VsockConn, error) {
+func newVsockConn(fd uintptr, lCID, lPort, rCID, rPort uint32) (*VsockConn, error) {
 	vsock := os.NewFile(fd, fmt.Sprintf("vsock:%d", fd))
-	local := VsockAddr{Port: localPort}
-	remote := VsockAddr{Port: uint(0)} // FIXME
+	local := VsockAddr{CID: lCID, Port: lPort}
+	remote := VsockAddr{CID: rCID, Port: rPort}
 	return &VsockConn{vsockConn{vsock: vsock, fd: fd, local: local, remote: remote}}, nil
 }
 
