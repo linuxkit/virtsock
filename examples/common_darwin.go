@@ -6,7 +6,7 @@ import (
 	"log"
 	"net"
 
-	"github.com/rneugeba/virtsock/pkg/vsock"
+	"github.com/linuxkit/virtsock/pkg/vsock"
 )
 
 var (

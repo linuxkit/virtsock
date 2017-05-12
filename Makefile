@@ -5,7 +5,7 @@ build-in-container: $(DEPS) clean
 	@echo "+ $@"
 	@docker build -t virtsock-build -f ./Dockerfile.build .
 	@docker run --rm \
-		-v ${CURDIR}/build:/go/src/github.com/rneugeba/virtsock/build \
+		-v ${CURDIR}/build:/go/src/github.com/linuxkit/virtsock/build \
 		virtsock-build
 
 build-binaries: virtsock_stress virtsock_echo
