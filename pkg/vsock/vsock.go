@@ -1,6 +1,14 @@
-// Package vsock implements Go bindings to the virtio socket device.
-// It primarily provides the bindings for the Linux guest but also
-// adds support for the hyperkit based implementation on macOS hosts.
+// Package vsock provides the Linux guest bindings to VM sockets. VM
+// sockets are a generic mechanism for guest<->host communication. It
+// was originally developed for VMware but now also supports virtio
+// sockets and (soon) Hyper-V sockets.
+//
+// The main purpose is to provide bindings to the Linux implementation
+// of VM sockets, based on the low level support in
+// golang.org/x/sys/unix.
+//
+// The package also provides bindings to the host interface to virtio
+// sockets for HyperKit on macOS.
 package vsock
 
 import (

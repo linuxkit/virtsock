@@ -1,12 +1,12 @@
-package vsock
-
-// This provides bindings to the hyperkit based implementation on
-// macOS hosts.  virtio Sockets are exposed as named pipes on
-// macOS. Two modes are supported (to be set with SockerMode()):
+// Package vsock provides bindings to the hyperkit based
+// implementation on macOS hosts.  virtio Sockets are exposed as named
+// pipes on macOS. Two modes are supported (to be set with
+// SockerMode()):
 // - Hyperkit mode: The package needs to be initialised with the path
 //   to where the named pipe was created.
 // - Docker for Mac mode: This is a shortcut which hard codes the
 //   location of the named pipe.
+package vsock
 
 import (
 	"fmt"
@@ -41,7 +41,7 @@ func SocketMode(socketMode string) {
 }
 
 // Dial creates a connection to the VM with the given client ID and port
-func Dial(cid, port uint) (Conn, error) {
+func Dial(cid, port uint32) (Conn, error) {
 	c, err := net.DialUnix("unix", nil, &net.UnixAddr{connectPath, "unix"})
 	if err != nil {
 		return c, err
@@ -53,7 +53,7 @@ func Dial(cid, port uint) (Conn, error) {
 }
 
 // Listen creates a listener for a specifc vsock.
-func Listen(cid, port uint) (net.Listener, error) {
+func Listen(cid, port uint32) (net.Listener, error) {
 	sock := filepath.Join(socketPath, fmt.Sprintf(socketFmt, cid, port))
 	if err := os.Remove(sock); err != nil && !os.IsNotExist(err) {
 		log.Fatalln("Listen(): Remove:", err)
