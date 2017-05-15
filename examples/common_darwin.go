@@ -24,7 +24,7 @@ func ValidateOptions() {
 }
 
 type vsockClient struct {
-	cid uint
+	cid uint32
 }
 
 func ParseClientStr(clientStr string) Client {
