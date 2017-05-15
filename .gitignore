@@ -1,5 +1,6 @@
 /build
 *.img
 *.iso
-*-kernel
 *-cmdline
+*-kernel
+*-state
