@@ -1,6 +1,7 @@
 kernel:
   # Choose your kernel
-  image: "linuxkit/kernel:4.11.x"
+  image: "linuxkit/kernel:4.11.x_dbg"
+  # image: "linuxkit/kernel:4.11.x"
   # image: "linuxkit/kernel:4.10.x"
   # image: "linuxkit/kernel:4.9.x"
   # image: "linuxkit/kernel:4.4.x"
@@ -12,20 +13,10 @@ init:
   - hvtest-local
 onboot:
   - name: sysctl
-    image: "linuxkit/sysctl:2cf2f9d5b4d314ba1bfc22b2fe931924af666d8c"
-    net: host
-    pid: host
-    ipc: host
-    capabilities:
-     - CAP_SYS_ADMIN
-    readonly: true
+    image: "linuxkit/sysctl:225c52c2d6f04a040663bac84cabf81825027f64"
 services:
   - name: rngd
-    image: "linuxkit/rngd:61a07ced77a9747708223ca16a4aec621eacf518"
-    capabilities:
-     - CAP_SYS_ADMIN
-    oomScoreAdj: -800
-    readonly: true
+    image: "linuxkit/rngd:69f951ce2a3a9534dbbc7ba8119e1df4391f06c0"
 trust:
   image:
     - linuxkit/kernel
