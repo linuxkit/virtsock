@@ -1,5 +1,5 @@
 .PHONY: build-in-container build-binaries virtsock_stress virtsock_echo clean
-DEPS:=$(wildcard pkg/*.go) $(wildcard examples/*.go) Dockerfile.build Makefile
+DEPS:=$(wildcard pkg/*.go) $(wildcard examples/*.go) $(wildcard cmd/vsudd/*.go) Dockerfile.build Makefile
 
 build-in-container: $(DEPS) clean
 	@echo "+ $@"
@@ -8,10 +8,16 @@ build-in-container: $(DEPS) clean
 		-v ${CURDIR}/build:/go/src/github.com/linuxkit/virtsock/build \
 		virtsock-build
 
-build-binaries: virtsock_stress virtsock_echo
+build-binaries: vsudd virtsock_stress virtsock_echo
 virtsock_stress: build/virtsock_stress.darwin build/virtsock_stress.linux build/virtsock_stress.exe
 virtsock_echo: build/virtsock_echo.darwin build/virtsock_echo.linux build/virtsock_echo.exe
+vsudd: build/vsudd.linux 
 
+build/vsudd.linux: $(DEPS)
+	@echo "+ $@"
+	GOOS=linux GOARCH=amd64 \
+	go build -o $@ -buildmode pie --ldflags '-s -w -extldflags "-static"' \
+		cmd/vsudd/main.go cmd/vsudd/vsyslog.go
 
 build/virtsock_stress.linux: $(DEPS)
 	@echo "+ $@"
