@@ -61,7 +61,7 @@ linuxkit: hvtest-efi.iso
 hvtest-efi.iso: build-in-container Dockerfile.linuxkit hvtest.yml
 	$(MAKE) -C c build-in-container
 	docker build -t hvtest-local -f Dockerfile.linuxkit .
-	moby build hvtest
+	moby build -output iso-efi hvtest.yml
 
 clean:
 	rm -rf build
