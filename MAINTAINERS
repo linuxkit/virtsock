@@ -8,8 +8,8 @@
 	[Org."Core maintainers"]
 		people = [
 			"djs55",
-			"ijc25",
-			"rneugeba",
+			"ijc",
+			"rn",
 		]
 
 [people]
@@ -25,12 +25,12 @@
 	Email = "dave.scott@docker.com"
 	GitHub = "djs55"
 
-	[people.ijc25]
+	[people.ijc]
 	Name = "Ian Campbell"
 	Email = "ian.campbell@docker.com"
-	GitHub = "ijc25"
+	GitHub = "ijc"
 
-	[people.rneugeba]
+	[people.rn]
 	Name = "Rolf Neugebauer"
-	Email = "rolf.neugebauer@gmail.com"
-	GitHub = "rneugeba"
+	Email = "rolf.neugebauer@docker.com"
+	GitHub = "rn"
