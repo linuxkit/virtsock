@@ -5,7 +5,7 @@ This repository contains Go bindings and sample code for [Hyper-V sockets](https
 
 - `pkg/hvsock`: Go binding for Hyper-V sockets
 - `pkg/vsock`: Go binding for virtio VSOCK
-- `cmd/virtsock_stress`: A stress test program for virtsock
+- `cmd/sock_stress`: A stress test program for virtsock
 - `cmd/vsudd`: A unix domain socket to virtsock proxy (used in Docker for Mac/Windows)
 - `scripts`: Miscellaneous scripts
 - `c`: Sample C code (including benchmarks and stress tests)
@@ -36,14 +36,14 @@ This should create a directory called `./hvtest-state`.
 
 Run the server in the VM and client on the host:
 ```
-linux$ virtsock_stress -s -v 1
-macos$ ./bin/virtsock_stress.darwin -c 3 -m hyperkit:./hvtest-state -v 1
+linux$ sock_stress -s -v 1
+macos$ ./bin/sock_stress.darwin -c 3 -m hyperkit:./hvtest-state -v 1
 ```
 
 Run the server on the host and the client inside the VM:
 ```
-macos$ ./bin/virtsock_stress.darwin -s -m hyperkit:./hvtest-state -v 1
-linux$ virtsock_stress -c 2 -v 1
+macos$ ./bin/sock_stress.darwin -s -m hyperkit:./hvtest-state -v 1
+linux$ sock_stress -c 2 -v 1
 ```
 
 ### Windows
