@@ -5,32 +5,32 @@ build-in-container: $(DEPS) clean
 	@echo "+ $@"
 	@docker build -t virtsock-build -f ./Dockerfile.build .
 	@docker run --rm \
-		-v ${CURDIR}/build:/go/src/github.com/linuxkit/virtsock/build \
+		-v ${CURDIR}/bin:/go/src/github.com/linuxkit/virtsock/bin \
 		virtsock-build
 
 build-binaries: vsudd virtsock_stress
-virtsock_stress: build/virtsock_stress.darwin build/virtsock_stress.linux build/virtsock_stress.exe
-vsudd: build/vsudd.linux 
+virtsock_stress: bin/virtsock_stress.darwin bin/virtsock_stress.linux bin/virtsock_stress.exe
+vsudd: bin/vsudd.linux 
 
-build/vsudd.linux: $(DEPS)
+bin/vsudd.linux: $(DEPS)
 	@echo "+ $@"
 	GOOS=linux GOARCH=amd64 \
 	go build -o $@ -buildmode pie --ldflags '-s -w -extldflags "-static"' \
 		cmd/vsudd/main.go cmd/vsudd/vsyslog.go
 
-build/virtsock_stress.linux: $(DEPS)
+bin/virtsock_stress.linux: $(DEPS)
 	@echo "+ $@"
 	GOOS=linux GOARCH=amd64 \
 	go build -o $@ -buildmode pie --ldflags '-s -w -extldflags "-static"' \
 		cmd/virtsock_stress/virtsock_stress.go cmd/virtsock_stress/common_hvsock.go cmd/virtsock_stress/common_vsock.go cmd/virtsock_stress/common_linux.go
 
-build/virtsock_stress.darwin: $(DEPS)
+bin/virtsock_stress.darwin: $(DEPS)
 	@echo "+ $@"
 	GOOS=darwin GOARCH=amd64 \
 	go build -o $@ --ldflags '-extldflags "-fno-PIC"' \
 		cmd/virtsock_stress/virtsock_stress.go cmd/virtsock_stress/common_vsock.go cmd/virtsock_stress/common_darwin.go
 
-build/virtsock_stress.exe: $(DEPS)
+bin/virtsock_stress.exe: $(DEPS)
 	@echo "+ $@"
 	GOOS=windows GOARCH=amd64 \
 	go build -o $@ cmd/virtsock_stress/virtsock_stress.go cmd/virtsock_stress/common_hvsock.go cmd/virtsock_stress/common_windows.go
@@ -43,7 +43,7 @@ hvtest-efi.iso: build-in-container Dockerfile.linuxkit hvtest.yml
 	moby build -output iso-efi hvtest.yml
 
 clean:
-	rm -rf build
+	rm -rf bin c/build
 
 fmt:
 	@echo "+ $@"

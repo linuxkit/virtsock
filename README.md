@@ -37,12 +37,12 @@ This should create a directory called `./hvtest-state`.
 Run the server in the VM and client on the host:
 ```
 linux$ virtsock_stress -s -v 1
-macos$ ./build/virtsock_stress.darwin -c 3 -m hyperkit:./hvtest-state -v 1
+macos$ ./bin/virtsock_stress.darwin -c 3 -m hyperkit:./hvtest-state -v 1
 ```
 
 Run the server on the host and the client inside the VM:
 ```
-macos$ ./build/virtsock_stress.darwin -s -m hyperkit:./hvtest-state -v 1
+macos$ ./bin/virtsock_stress.darwin -s -m hyperkit:./hvtest-state -v 1
 linux$ virtsock_stress -c 2 -v 1
 ```
 
