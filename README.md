@@ -5,7 +5,8 @@ This repository contains Go bindings and sample code for [Hyper-V sockets](https
 
 - `pkg/hvsock`: Go binding for Hyper-V sockets
 - `pkg/vsock`: Go binding for virtio VSOCK
-- `examples`: Sample Go code and stress test
+- `cmd/virtsock_stress`: A stress test program for virtsock
+- `cmd/vsudd`: A unix domain socket to virtsock proxy (used in Docker for Mac/Windows)
 - `scripts`: Miscellaneous scripts
 - `c`: Sample C code (including benchmarks and stress tests)
 - `data`: Data from benchmarks
@@ -19,7 +20,7 @@ If you want to build binaries on a local system use `make build-binaries`.
 
 ## Testing
 
-There are several examples and tests written both in [Go](./examples) and in [C](./c). The C code is Hyper-V sockets only while the Go code also works with virtio sockets and [HyperKit](https://github.com/moby/hyperkit). The respective READMEs contain instructions on how to run the tests, but the simplest way is to use [LinuxKit](https://github.com/linuxkit/linuxkit).
+There are several examples and tests written both in [Go](./cmd) and in [C](./c). The C code is Hyper-V sockets specific while the Go code also works with virtio sockets and [HyperKit](https://github.com/moby/hyperkit). The respective READMEs contain instructions on how to run the tests, but the simplest way is to use [LinuxKit](https://github.com/linuxkit/linuxkit).
 
 Assuming you have LinuxKit installed, the make target `make linuxkit`
 will build a custom Linux image which can be booted on HyperKit or on

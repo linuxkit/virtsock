@@ -1,5 +1,5 @@
-.PHONY: build-in-container build-binaries virtsock_stress virtsock_echo clean
-DEPS:=$(wildcard pkg/*.go) $(wildcard examples/*.go) $(wildcard cmd/vsudd/*.go) Dockerfile.build Makefile
+.PHONY: build-in-container build-binaries virtsock_stress clean
+DEPS:=$(wildcard pkg/*.go) $(wildcard cmd/virtsock_stress/*.go) $(wildcard cmd/vsudd/*.go) Dockerfile.build Makefile
 
 build-in-container: $(DEPS) clean
 	@echo "+ $@"
@@ -8,9 +8,8 @@ build-in-container: $(DEPS) clean
 		-v ${CURDIR}/build:/go/src/github.com/linuxkit/virtsock/build \
 		virtsock-build
 
-build-binaries: vsudd virtsock_stress virtsock_echo
+build-binaries: vsudd virtsock_stress
 virtsock_stress: build/virtsock_stress.darwin build/virtsock_stress.linux build/virtsock_stress.exe
-virtsock_echo: build/virtsock_echo.darwin build/virtsock_echo.linux build/virtsock_echo.exe
 vsudd: build/vsudd.linux 
 
 build/vsudd.linux: $(DEPS)
@@ -23,38 +22,18 @@ build/virtsock_stress.linux: $(DEPS)
 	@echo "+ $@"
 	GOOS=linux GOARCH=amd64 \
 	go build -o $@ -buildmode pie --ldflags '-s -w -extldflags "-static"' \
-		examples/virtsock_stress.go examples/common_hvsock.go examples/common_vsock.go examples/common_linux.go
+		cmd/virtsock_stress/virtsock_stress.go cmd/virtsock_stress/common_hvsock.go cmd/virtsock_stress/common_vsock.go cmd/virtsock_stress/common_linux.go
 
 build/virtsock_stress.darwin: $(DEPS)
 	@echo "+ $@"
 	GOOS=darwin GOARCH=amd64 \
 	go build -o $@ --ldflags '-extldflags "-fno-PIC"' \
-		examples/virtsock_stress.go examples/common_vsock.go examples/common_darwin.go
+		cmd/virtsock_stress/virtsock_stress.go cmd/virtsock_stress/common_vsock.go cmd/virtsock_stress/common_darwin.go
 
 build/virtsock_stress.exe: $(DEPS)
 	@echo "+ $@"
 	GOOS=windows GOARCH=amd64 \
-	go build -o $@ examples/virtsock_stress.go examples/common_hvsock.go examples/common_windows.go
-
-
-
-build/virtsock_echo.linux: $(DEPS)
-	@echo "+ $@"
-	GOOS=linux GOARCH=amd64 \
-	go build -o $@ -buildmode pie --ldflags '-s -w -extldflags "-static"' \
-		examples/virtsock_echo.go examples/common_hvsock.go examples/common_vsock.go examples/common_linux.go
-
-build/virtsock_echo.darwin: $(DEPS)
-	@echo "+ $@"
-	GOOS=darwin GOARCH=amd64 \
-	go build -o $@ --ldflags '-extldflags "-fno-PIC"' \
-		examples/virtsock_echo.go examples/common_vsock.go examples/common_darwin.go
-
-build/virtsock_echo.exe: $(DEPS)
-	@echo "+ $@"
-	GOOS=windows GOARCH=amd64 \
-	go build -o $@ examples/virtsock_echo.go examples/common_hvsock.go examples/common_windows.go
-
+	go build -o $@ cmd/virtsock_stress/virtsock_stress.go cmd/virtsock_stress/common_hvsock.go cmd/virtsock_stress/common_windows.go
 
 # Target to build a bootable EFI ISO
 linuxkit: hvtest-efi.iso

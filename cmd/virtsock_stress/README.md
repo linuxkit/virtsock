@@ -1,6 +1,3 @@
-_Note:_ `virtsock_echo` can be substituted for `virtsock_stress` mostly as is
-(the basic options are common to both).
-
 # Operating System Specific
 
 ## Windows
