@@ -7,12 +7,17 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/url"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"crypto/md5"
 	"math/rand"
 	"sync/atomic"
+
+	"github.com/linuxkit/virtsock/pkg/hvsock"
 )
 
 const (
@@ -21,7 +26,7 @@ const (
 
 var (
 	clientStr   string
-	serverMode  bool
+	serverStr   string
 	maxDataLen  int
 	minDataLen  int
 	minBufLen   int
@@ -35,20 +40,24 @@ var (
 	connCounter int32
 )
 
+// Conn is a net.Conn interface extended with CloseRead/CloseWrite
 type Conn interface {
 	net.Conn
 	CloseRead() error
 	CloseWrite() error
 }
 
-type Client interface {
+// Sock is an interface abstracting over the type of socket being used
+type Sock interface {
 	String() string
 	Dial(conid int) (Conn, error)
+	Listen() net.Listener
 }
 
 func init() {
-	flag.StringVar(&clientStr, "c", "", "Client")
-	flag.BoolVar(&serverMode, "s", false, "Start as a Server")
+	flag.StringVar(&clientStr, "c", "", "Start the Client")
+	flag.StringVar(&serverStr, "s", "", "Start as a Server")
+
 	flag.IntVar(&minDataLen, "L", 0, "Minimum Length of data")
 	flag.IntVar(&maxDataLen, "l", 64*1024, "Maximum Length of data")
 	flag.IntVar(&minBufLen, "B", 16*1024, "Minimum Buffer size")
@@ -59,19 +68,51 @@ func init() {
 	flag.BoolVar(&exitOnError, "e", false, "Exit when an error occurs")
 	flag.IntVar(&verbose, "v", 0, "Set the verbosity level")
 
+	flag.Usage = func() {
+		prog := filepath.Base(os.Args[0])
+		fmt.Printf("USAGE: %s [options]\n\n", prog)
+		fmt.Printf("Generic stress test program for sockets.\n")
+		fmt.Printf("Create concurrent socket connections supporting a\n")
+		fmt.Printf("number of protocols. The client send random amount of data over\n")
+		fmt.Printf("the socket and the server echos it back. The client compares\n")
+		fmt.Printf("checksums before and after.\n")
+		fmt.Printf("\n")
+		fmt.Printf("The amount of data and in which chunks it is sent is controlled\n")
+		fmt.Printf("by a number of parameters.\n")
+		fmt.Printf("\n")
+		fmt.Printf("-c and -s take a URL as argument (or just the address scheme):\n")
+		fmt.Printf("Supported protocols are:\n")
+		fmt.Printf("  vsock   virtio sockets (Linux and HyperKit\n")
+		fmt.Printf("  hvsock  Hyper-V sockets (Linux and Windows)\n")
+		fmt.Printf("\n")
+		fmt.Printf("Note, depending on the Linux kernel version use vsock or hvsock\n")
+		fmt.Printf("for Hyper-V sockets (newer kernels use the vsocks interface for Hyper-V sockets.\n")
+		fmt.Printf("\n")
+		fmt.Printf("Options:\n")
+		flag.PrintDefaults()
+		fmt.Printf("\n")
+		fmt.Printf("Examples:\n")
+		fmt.Printf("  %s -s vsock            Start server in vsock mode on standard port\n", prog)
+		fmt.Printf("  %s -s vsock://:1235    Start server in vsock mode on a non-standard port\n", prog)
+		fmt.Printf("  %s -c hvsock://<vmid>  Start client in hvsock mode connecting to VM with <vmid>\n", prog)
+	}
 	rand.Seed(time.Now().UnixNano())
 }
 
 func main() {
 	log.SetFlags(log.LstdFlags)
 	flag.Parse()
+	hostInit()
 
-	SetVerbosity()
-	ValidateOptions()
+	if verbose > 2 {
+		hvsock.Debug = true
+		// vsock does not have debug
+	}
 
-	if serverMode {
-		fmt.Printf("Starting server\n")
-		server()
+	if serverStr != "" {
+		s := parseSockStr(serverStr)
+		fmt.Printf("Starting server %s\n", s.String())
+		server(s)
 		return
 	}
 
@@ -84,13 +125,13 @@ func main() {
 		return
 	}
 
-	cl := ParseClientStr(clientStr)
-	fmt.Printf("Client connecting to %s\n", cl.String())
+	s := parseSockStr(clientStr)
+	fmt.Printf("Client connecting to %s\n", s.String())
 
 	if parallel <= 1 {
 		// No parallelism, run in the main thread.
 		for i := 0; i < connections; i++ {
-			client(cl, i)
+			client(s, i)
 			time.Sleep(time.Duration(sleepTime) * time.Second)
 		}
 		return
@@ -100,16 +141,34 @@ func main() {
 	var wg sync.WaitGroup
 	for i := 0; i < parallel; i++ {
 		wg.Add(1)
-		go parClient(&wg, cl)
+		go parClient(&wg, s)
 	}
 	wg.Wait()
 }
 
-func server() {
-	l := ServerListen()
-	defer func() {
-		l.Close()
-	}()
+// parseSockStr parses a address of the form <proto>://foo where foo
+// is parsed by a proto specific parser
+func parseSockStr(inStr string) Sock {
+	u, err := url.Parse(inStr)
+	if err != nil {
+		log.Fatalf("Failed to parse %s: %v", inStr, err)
+	}
+	if u.Scheme == "" {
+		u.Scheme = inStr
+	}
+	switch u.Scheme {
+	case "vsock":
+		return vsockParseSockStr(u.Host)
+	case "hvsock":
+		return hvsockParseSockStr(u.Host)
+	}
+	log.Fatalf("Unknown address scheme: '%s'", u.Scheme)
+	return nil
+}
+
+func server(s Sock) {
+	l := s.Listen()
+	defer l.Close()
 
 	connid := 0
 
@@ -146,10 +205,10 @@ func handleRequest(c net.Conn, connid int) {
 	prInfo("[%05d] ECHOED: %10d bytes in %10.4f ms\n", connid, n, diffTime.Seconds()*1000)
 }
 
-func parClient(wg *sync.WaitGroup, cl Client) {
+func parClient(wg *sync.WaitGroup, s Sock) {
 	connid := int(atomic.AddInt32(&connCounter, 1))
 	for connid < connections {
-		client(cl, connid)
+		client(s, connid)
 		connid = int(atomic.AddInt32(&connCounter, 1))
 		time.Sleep(time.Duration(sleepTime) * time.Second)
 	}
@@ -171,13 +230,12 @@ func md5Hash(h hash.Hash) [16]byte {
 	return r
 }
 
-func client(cl Client, conid int) {
-	c, err := cl.Dial(conid)
-	if c == nil {
-		prError("[%05d] Failed to Dial: %s %s\n", conid, cl, err)
+func client(s Sock, conid int) {
+	c, err := s.Dial(conid)
+	if err != nil {
+		prError("[%05d] Failed to Dial: %s %s\n", conid, s, err)
 		return
 	}
-
 	defer c.Close()
 
 	// Create buffer with random data and random length.
