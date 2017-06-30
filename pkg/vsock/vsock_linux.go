@@ -48,9 +48,16 @@ func Dial(cid, port uint32) (Conn, error) {
 		return nil, err
 	}
 	sa := &unix.SockaddrVM{CID: cid, Port: port}
-	if err = unix.Connect(fd, sa); err != nil {
-		return nil, errors.New(fmt.Sprintf(
-			"failed connect() to %08x.%08x: %s", cid, port, err))
+	// Retry connect in a loop if EINTR is encountered.
+	for {
+		if err := unix.Connect(fd, sa); err != nil {
+			if errno, ok := err.(syscall.Errno); ok && errno == syscall.EINTR {
+				continue
+			}
+			return nil, errors.New(fmt.Sprintf(
+				"failed connect() to %08x.%08x: %s", cid, port, err))
+		}
+		break
 	}
 	return newVsockConn(uintptr(fd), nil, &VsockAddr{cid, port}), nil
 }
