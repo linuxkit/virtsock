@@ -35,12 +35,11 @@ bin/virtsock_stress.exe: $(DEPS)
 	GOOS=windows GOARCH=amd64 \
 	go build -o $@ cmd/virtsock_stress/virtsock_stress.go cmd/virtsock_stress/common_hvsock.go cmd/virtsock_stress/common_windows.go
 
-# Target to build a bootable EFI ISO
-linuxkit: hvtest-efi.iso
-hvtest-efi.iso: build-in-container Dockerfile.linuxkit hvtest.yml
+# Target to build a bootable EFI ISO and kernel+initrd
+linuxkit: build-in-container Dockerfile.linuxkit hvtest.yml
 	$(MAKE) -C c build-in-container
 	docker build -t hvtest-local -f Dockerfile.linuxkit .
-	moby build -output iso-efi hvtest.yml
+	moby build -output kernel+initrd,iso-efi hvtest.yml
 
 clean:
 	rm -rf bin c/build
