@@ -1,6 +1,3 @@
-_Note:_ `virtsock_echo` can be substituted for `virtsock_stress` mostly as is
-(the basic options are common to both).
-
 # Operating System Specific
 
 ## Windows
@@ -17,8 +14,8 @@ container:
     $ cat >Dockerfile <<EOF
     FROM alpine
     RUN apk update && apk add strace
-    ADD virtsock_stress.linux /virtsock_stress
-    ENTRYPOINT ["/virtsock_stress"]
+    ADD sock_stress.linux /sock_stress
+    ENTRYPOINT ["/sock_stress"]
     EOF
     $ docker build -t stress . && docker run -it --rm --net=host --privileged stress [...options...]
 
@@ -31,7 +28,7 @@ themselves differ).
 To run against standalone Hyperkit the path to the sockets must be
 specified when starting Hyperkit and must be passed to the option:
 
-    macos$ ./virtsock_stress.darwin -s -m hyperkit:/var/run/
+    macos$ ./sock_stress.darwin -s vsock -m hyperkit:/var/run/
 
 (this assumes hyperkit was built without `PRI_ADDR_PREFIX` or
 `CONNECT_SOCKET_NAME` set at build time and run with e.g. `-s
@@ -40,7 +37,7 @@ specified when starting Hyperkit and must be passed to the option:
 In Docker mode everything is implied to be as it is configured by
 Docker for Mac. This is the default but can be given explicitly with:
 
-    macos$ ./virtsock_stress.darwin -s -m docker
+    macos$ ./sock_stress.darwin -s vsock -m docker
 
 # Specific OS Pairs
 
@@ -48,12 +45,12 @@ Docker for Mac. This is the default but can be given explicitly with:
 
 Start the linux container with program in server mode:
 
-    PS> docker run -it --rm --net=host --privileged stress -s
+    PS> docker run -it --rm --net=host --privileged stress -s hvsock
 
 The start the client in a separate powershell window:
 
     PS> $vmId = (Get-VM MobyLinuxVM).Id
-    PS> .\virtsock_stress.exe -c $vmId
+    PS> .\sock_stress.exe -c hvsock://$vmId
     
 
 ## Linux & Docker for Mac
@@ -61,11 +58,11 @@ The start the client in a separate powershell window:
 When running as a client on the Linux side the correct address is cid
 "2" (the host):
 
-    linux$ docker run -it --rm --net=host --privileged stress -c 2
-    macos$ ./virtsock_stress.darwin -s
+    linux$ docker run -it --rm --net=host --privileged stress -c vsock://2
+    macos$ ./sock_stress.darwin -s vsock
 
 When running as a client on the MacOS side the correct address is cid
 is "3" (the guest, as configued by Docker for Mac):
 
-    linux$ docker run -it --rm --net=host --privileged stress -s
-    macos$ ./virtsock_stress.darwin -c 3
+    linux$ docker run -it --rm --net=host --privileged stress -s vsock
+    macos$ ./sock_stress.darwin -c vsock://3

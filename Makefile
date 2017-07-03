@@ -1,70 +1,49 @@
-.PHONY: build-in-container build-binaries virtsock_stress virtsock_echo clean
-DEPS:=$(wildcard pkg/*.go) $(wildcard examples/*.go) $(wildcard cmd/vsudd/*.go) Dockerfile.build Makefile
+.PHONY: build-in-container build-binaries sock_stress clean
+DEPS:=$(wildcard pkg/*.go) $(wildcard cmd/sock_stress/*.go) $(wildcard cmd/vsudd/*.go) Dockerfile.build Makefile
 
 build-in-container: $(DEPS) clean
 	@echo "+ $@"
 	@docker build -t virtsock-build -f ./Dockerfile.build .
 	@docker run --rm \
-		-v ${CURDIR}/build:/go/src/github.com/linuxkit/virtsock/build \
+		-v ${CURDIR}/bin:/go/src/github.com/linuxkit/virtsock/bin \
 		virtsock-build
 
-build-binaries: vsudd virtsock_stress virtsock_echo
-virtsock_stress: build/virtsock_stress.darwin build/virtsock_stress.linux build/virtsock_stress.exe
-virtsock_echo: build/virtsock_echo.darwin build/virtsock_echo.linux build/virtsock_echo.exe
-vsudd: build/vsudd.linux 
+build-binaries: vsudd sock_stress
+sock_stress: bin/sock_stress.darwin bin/sock_stress.linux bin/sock_stress.exe
+vsudd: bin/vsudd.linux 
 
-build/vsudd.linux: $(DEPS)
+bin/vsudd.linux: $(DEPS)
 	@echo "+ $@"
 	GOOS=linux GOARCH=amd64 \
 	go build -o $@ -buildmode pie --ldflags '-s -w -extldflags "-static"' \
-		cmd/vsudd/main.go cmd/vsudd/vsyslog.go
+		github.com/linuxkit/virtsock/cmd/vsudd
 
-build/virtsock_stress.linux: $(DEPS)
+bin/sock_stress.linux: $(DEPS)
 	@echo "+ $@"
 	GOOS=linux GOARCH=amd64 \
 	go build -o $@ -buildmode pie --ldflags '-s -w -extldflags "-static"' \
-		examples/virtsock_stress.go examples/common_hvsock.go examples/common_vsock.go examples/common_linux.go
+		github.com/linuxkit/virtsock/cmd/sock_stress
 
-build/virtsock_stress.darwin: $(DEPS)
+bin/sock_stress.darwin: $(DEPS)
 	@echo "+ $@"
 	GOOS=darwin GOARCH=amd64 \
 	go build -o $@ --ldflags '-extldflags "-fno-PIC"' \
-		examples/virtsock_stress.go examples/common_vsock.go examples/common_darwin.go
+		github.com/linuxkit/virtsock/cmd/sock_stress
 
-build/virtsock_stress.exe: $(DEPS)
+bin/sock_stress.exe: $(DEPS)
 	@echo "+ $@"
 	GOOS=windows GOARCH=amd64 \
-	go build -o $@ examples/virtsock_stress.go examples/common_hvsock.go examples/common_windows.go
+	go build -o $@ \
+		github.com/linuxkit/virtsock/cmd/sock_stress
 
-
-
-build/virtsock_echo.linux: $(DEPS)
-	@echo "+ $@"
-	GOOS=linux GOARCH=amd64 \
-	go build -o $@ -buildmode pie --ldflags '-s -w -extldflags "-static"' \
-		examples/virtsock_echo.go examples/common_hvsock.go examples/common_vsock.go examples/common_linux.go
-
-build/virtsock_echo.darwin: $(DEPS)
-	@echo "+ $@"
-	GOOS=darwin GOARCH=amd64 \
-	go build -o $@ --ldflags '-extldflags "-fno-PIC"' \
-		examples/virtsock_echo.go examples/common_vsock.go examples/common_darwin.go
-
-build/virtsock_echo.exe: $(DEPS)
-	@echo "+ $@"
-	GOOS=windows GOARCH=amd64 \
-	go build -o $@ examples/virtsock_echo.go examples/common_hvsock.go examples/common_windows.go
-
-
-# Target to build a bootable EFI ISO
-linuxkit: hvtest-efi.iso
-hvtest-efi.iso: build-in-container Dockerfile.linuxkit hvtest.yml
+# Target to build a bootable EFI ISO and kernel+initrd
+linuxkit: build-in-container Dockerfile.linuxkit hvtest.yml
 	$(MAKE) -C c build-in-container
 	docker build -t hvtest-local -f Dockerfile.linuxkit .
-	moby build -output iso-efi hvtest.yml
+	moby build -output kernel+initrd,iso-efi hvtest.yml
 
 clean:
-	rm -rf build
+	rm -rf bin c/build
 
 fmt:
 	@echo "+ $@"

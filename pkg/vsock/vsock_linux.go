@@ -16,22 +16,6 @@ import (
 func SocketMode(m string) {
 }
 
-// VsockAddr represents the address of a vsock end point.
-type VsockAddr struct {
-	CID  uint32
-	Port uint32
-}
-
-// Network returns the network type for a VsockAddr
-func (a VsockAddr) Network() string {
-	return "vsock"
-}
-
-// String returns a string representation of a VsockAddr
-func (a VsockAddr) String() string {
-	return fmt.Sprintf("%08x.%08x", a.CID, a.Port)
-}
-
 // Convert a generic unix.Sockaddr to a VsockAddr
 func sockaddrToVsock(sa unix.Sockaddr) *VsockAddr {
 	switch sa := sa.(type) {
