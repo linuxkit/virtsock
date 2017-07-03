@@ -36,14 +36,14 @@ This should create a directory called `./hvtest-state`.
 
 Run the server in the VM and client on the host:
 ```
-linux$ sock_stress -s -v 1
-macos$ ./bin/sock_stress.darwin -c 3 -m hyperkit:./hvtest-state -v 1
+linux$ sock_stress -s vsock -v 1
+macos$ ./bin/sock_stress.darwin -c vsock://3 -m hyperkit:./hvtest-state -v 1
 ```
 
 Run the server on the host and the client inside the VM:
 ```
-macos$ ./bin/sock_stress.darwin -s -m hyperkit:./hvtest-state -v 1
-linux$ sock_stress -c 2 -v 1
+macos$ ./bin/sock_stress.darwin -s vsock -m hyperkit:./hvtest-state -v 1
+linux$ sock_stress -c vsock://2 -v 1
 ```
 
 ### Windows
