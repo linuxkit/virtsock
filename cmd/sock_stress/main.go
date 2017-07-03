@@ -82,8 +82,10 @@ func init() {
 		fmt.Printf("\n")
 		fmt.Printf("-c and -s take a URL as argument (or just the address scheme):\n")
 		fmt.Printf("Supported protocols are:\n")
-		fmt.Printf("  vsock   virtio sockets (Linux and HyperKit\n")
-		fmt.Printf("  hvsock  Hyper-V sockets (Linux and Windows)\n")
+		fmt.Printf("  vsock     virtio sockets (Linux and HyperKit\n")
+		fmt.Printf("  hvsock    Hyper-V sockets (Linux and Windows)\n")
+		fmt.Printf("  tcp,tcp4  TCP/IPv4 socket\n")
+		fmt.Printf("  tcp6      TCP/IPv6 socket\n")
 		fmt.Printf("\n")
 		fmt.Printf("Note, depending on the Linux kernel version use vsock or hvsock\n")
 		fmt.Printf("for Hyper-V sockets (newer kernels use the vsocks interface for Hyper-V sockets.\n")
@@ -161,6 +163,8 @@ func parseSockStr(inStr string) Sock {
 		return vsockParseSockStr(u.Host)
 	case "hvsock":
 		return hvsockParseSockStr(u.Host)
+	case "tcp", "tcp4", "tcp6":
+		return tcpParseSockStr(u.Scheme, u.Host)
 	}
 	log.Fatalf("Unknown address scheme: '%s'", u.Scheme)
 	return nil
