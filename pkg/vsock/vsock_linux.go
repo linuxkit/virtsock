@@ -27,7 +27,7 @@ func sockaddrToVsock(sa unix.Sockaddr) *VsockAddr {
 
 // Dial connects to the CID.Port via virtio sockets
 func Dial(cid, port uint32) (Conn, error) {
-	fd, err := syscall.Socket(unix.AF_VSOCK, syscall.SOCK_STREAM, 0)
+	fd, err := syscall.Socket(unix.AF_VSOCK, syscall.SOCK_STREAM|syscall.SOCK_CLOEXEC, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func Dial(cid, port uint32) (Conn, error) {
 
 // Listen returns a net.Listener which can accept connections on the given port
 func Listen(cid, port uint32) (net.Listener, error) {
-	fd, err := syscall.Socket(unix.AF_VSOCK, syscall.SOCK_STREAM, 0)
+	fd, err := syscall.Socket(unix.AF_VSOCK, syscall.SOCK_STREAM|syscall.SOCK_CLOEXEC, 0)
 	if err != nil {
 		return nil, err
 	}
