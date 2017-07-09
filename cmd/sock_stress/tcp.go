@@ -11,47 +11,61 @@ const (
 )
 
 type tcpAddr struct {
+	addr *net.TCPAddr
 	net  string
-	host string
-	port string
 }
 
 // tcpParseSockStr extracts the host and port from a string.
 // The format is "Host:Port", "Host", or ":Port" as well as an empty string.
 func tcpParseSockStr(netStr, sockStr string) tcpAddr {
-	a := tcpAddr{net: netStr, host: "localhost", port: tcpPort}
-	if sockStr == "" {
-		return a
-	}
+	var s tcpAddr
+	s.net = netStr
 
-	var err error
-	if strings.Contains(sockStr, ":") {
-		a.host, a.port, err = net.SplitHostPort(sockStr)
-		if err != nil {
-			log.Fatalf("Error parsing socket string '%s': %v", sockStr, err)
+	if netStr == "tcp6" {
+		// IPv6 address. Append port if not specified
+		if strings.Contains(sockStr, "]") {
+			if sockStr[len(sockStr)-1:] == "]" {
+				// IPv6 address bu no port
+				sockStr = sockStr + ":" + tcpPort
+			}
+		} else {
+			if !strings.Contains(sockStr, ":") {
+				// empty host portion or hostname given
+				// but no port. Append port
+				sockStr = sockStr + ":" + tcpPort
+			}
 		}
 	} else {
-		a.host = sockStr
+		// IPv4 address. Append port if not specified
+		if !strings.Contains(sockStr, ":") {
+			sockStr = sockStr + ":" + tcpPort
+		}
 	}
-	return a
+
+	a, err := net.ResolveTCPAddr(netStr, sockStr)
+	if err != nil {
+		log.Fatalf("Error parsing socket string '%s': %v", sockStr, err)
+	}
+	s.addr = a
+	return s
 }
 
 func (s tcpAddr) String() string {
-	return s.net + "://" + s.host + ":" + s.port
+	return s.net + "://" + s.addr.String()
 }
 
-// Dial connects on a virtio socket
+// Dial connects on a TCP socket
 func (s tcpAddr) Dial(conid int) (Conn, error) {
-	c, err := net.Dial(s.net, s.host+":"+s.port)
+	c, err := net.Dial(s.net, s.addr.String())
 	if err != nil {
 		return nil, err
 	}
 	return c.(*net.TCPConn), err
 }
 
-// Listen returns a net.Listener for a given virtio socket
+// Listen returns a net.Listener for a given TCP socket
 func (s tcpAddr) Listen() net.Listener {
-	l, err := net.Listen(s.net, s.host+":"+s.port)
+	l, err := net.Listen(s.net, s.addr.String())
 	if err != nil {
 		log.Fatalln("Listen():", err)
 	}
