@@ -50,6 +50,12 @@ type Sock interface {
 	Listen() net.Listener
 }
 
+// Test is an interface implemented a specific test
+type Test interface {
+	Server(s Sock)
+	Client(s Sock, connid int)
+}
+
 func init() {
 	flag.StringVar(&clientStr, "c", "", "Start the Client")
 	flag.StringVar(&serverStr, "s", "", "Start as a Server")
@@ -111,7 +117,8 @@ func main() {
 	if serverStr != "" {
 		s := parseSockStr(serverStr)
 		fmt.Printf("Starting server %s\n", s.String())
-		server(s)
+		t := newStreamEchoTest()
+		t.Server(s)
 		return
 	}
 
@@ -126,11 +133,12 @@ func main() {
 
 	s := parseSockStr(clientStr)
 	fmt.Printf("Client connecting to %s\n", s.String())
+	t := newStreamEchoTest()
 
 	if parallel <= 1 {
 		// No parallelism, run in the main thread.
 		for i := 0; i < connections; i++ {
-			client(s, i)
+			t.Client(s, i)
 			time.Sleep(time.Duration(sleepTime) * time.Second)
 		}
 		return
@@ -140,7 +148,7 @@ func main() {
 	var wg sync.WaitGroup
 	for i := 0; i < parallel; i++ {
 		wg.Add(1)
-		go parClient(&wg, s)
+		go parClient(t, &wg, s)
 	}
 	wg.Wait()
 }
@@ -169,10 +177,10 @@ func parseSockStr(inStr string) Sock {
 	return nil
 }
 
-func parClient(wg *sync.WaitGroup, s Sock) {
+func parClient(t Test, wg *sync.WaitGroup, s Sock) {
 	connid := int(atomic.AddInt32(&connCounter, 1))
 	for connid < connections {
-		client(s, connid)
+		t.Client(s, connid)
 		connid = int(atomic.AddInt32(&connCounter, 1))
 		time.Sleep(time.Duration(sleepTime) * time.Second)
 	}

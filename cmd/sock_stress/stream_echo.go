@@ -15,7 +15,13 @@ import (
 	"time"
 )
 
-func server(s Sock) {
+type streamEcho struct{}
+
+func newStreamEchoTest() streamEcho {
+	return streamEcho{}
+}
+
+func (t streamEcho) Server(s Sock) {
 	l := s.Listen()
 	defer l.Close()
 
@@ -28,12 +34,12 @@ func server(s Sock) {
 		}
 
 		prDebug("[%05d] accept(): %s -> %s \n", connid, conn.RemoteAddr(), conn.LocalAddr())
-		go handleRequest(conn, connid)
+		go t.handleRequest(conn, connid)
 		connid++
 	}
 }
 
-func handleRequest(c net.Conn, connid int) {
+func (t streamEcho) handleRequest(c net.Conn, connid int) {
 	defer func() {
 		prDebug("[%05d] Closing\n", connid)
 		err := c.Close()
@@ -54,7 +60,7 @@ func handleRequest(c net.Conn, connid int) {
 	prInfo("[%05d] ECHOED: %10d bytes in %10.4f ms\n", connid, n, diffTime.Seconds()*1000)
 }
 
-func client(s Sock, conid int) {
+func (t streamEcho) Client(s Sock, conid int) {
 	c, err := s.Dial(conid)
 	if err != nil {
 		prError("[%05d] Failed to Dial: %s %s\n", conid, s, err)
