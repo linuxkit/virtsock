@@ -48,6 +48,7 @@ type Sock interface {
 	String() string
 	Dial(conid int) (Conn, error)
 	Listen() net.Listener
+	ListenPacket() net.PacketConn
 }
 
 // Test is an interface implemented a specific test
@@ -114,10 +115,24 @@ func main() {
 		// vsock does not have debug
 	}
 
+	var n string
+	var s Sock
 	if serverStr != "" {
-		s := parseSockStr(serverStr)
+		n, s = parseSockStr(serverStr)
+	} else {
+		n, s = parseSockStr(clientStr)
+	}
+
+	var t Test
+	switch n {
+	case "udp", "udp4", "udp6":
+		t = newDgramEchoTest()
+	default:
+		t = newStreamEchoTest()
+	}
+
+	if serverStr != "" {
 		fmt.Printf("Starting server %s\n", s.String())
-		t := newStreamEchoTest()
 		t.Server(s)
 		return
 	}
@@ -131,10 +146,7 @@ func main() {
 		return
 	}
 
-	s := parseSockStr(clientStr)
 	fmt.Printf("Client connecting to %s\n", s.String())
-	t := newStreamEchoTest()
-
 	if parallel <= 1 {
 		// No parallelism, run in the main thread.
 		for i := 0; i < connections; i++ {
@@ -155,7 +167,7 @@ func main() {
 
 // parseSockStr parses a address of the form <proto>://foo where foo
 // is parsed by a proto specific parser
-func parseSockStr(inStr string) Sock {
+func parseSockStr(inStr string) (string, Sock) {
 	u, err := url.Parse(inStr)
 	if err != nil {
 		log.Fatalf("Failed to parse %s: %v", inStr, err)
@@ -165,16 +177,18 @@ func parseSockStr(inStr string) Sock {
 	}
 	switch u.Scheme {
 	case "vsock":
-		return vsockParseSockStr(u.Host)
+		return u.Scheme, vsockParseSockStr(u.Host)
 	case "hvsock":
-		return hvsockParseSockStr(u.Host)
+		return u.Scheme, hvsockParseSockStr(u.Host)
 	case "tcp", "tcp4", "tcp6":
-		return tcpParseSockStr(u.Scheme, u.Host)
+		return u.Scheme, tcpParseSockStr(u.Scheme, u.Host)
+	case "udp", "udp4", "udo6":
+		return u.Scheme, udpParseSockStr(u.Scheme, u.Host)
 	case "unix":
-		return unixParseSockStr(u.Path)
+		return u.Scheme, unixParseSockStr(u.Path)
 	}
 	log.Fatalf("Unknown address scheme: '%s'", u.Scheme)
-	return nil
+	return "", nil
 }
 
 func parClient(t Test, wg *sync.WaitGroup, s Sock) {

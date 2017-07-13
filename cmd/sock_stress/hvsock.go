@@ -77,3 +77,9 @@ func (s hvsockAddr) Listen() net.Listener {
 	}
 	return l
 }
+
+// ListenPacket is not implemented for Hyper-V sockets
+func (s hvsockAddr) ListenPacket() net.PacketConn {
+	log.Fatalln("ListenPacket(): not implemented for Hyper-V sockets")
+	return nil
+}

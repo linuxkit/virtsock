@@ -38,3 +38,9 @@ func (s unixAddr) Listen() net.Listener {
 	}
 	return l
 }
+
+// ListenPacket is not implemented for unix domain sockets
+func (s unixAddr) ListenPacket() net.PacketConn {
+	log.Fatalln("ListenPacket(): not implemented for unix domain sockets")
+	return nil
+}
