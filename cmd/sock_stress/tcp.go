@@ -3,11 +3,6 @@ package main
 import (
 	"log"
 	"net"
-	"strings"
-)
-
-const (
-	tcpPort = "5303"
 )
 
 type tcpAddr struct {
@@ -21,27 +16,7 @@ func tcpParseSockStr(netStr, sockStr string) tcpAddr {
 	var s tcpAddr
 	s.net = netStr
 
-	if netStr == "tcp6" {
-		// IPv6 address. Append port if not specified
-		if strings.Contains(sockStr, "]") {
-			if sockStr[len(sockStr)-1:] == "]" {
-				// IPv6 address bu no port
-				sockStr = sockStr + ":" + tcpPort
-			}
-		} else {
-			if !strings.Contains(sockStr, ":") {
-				// empty host portion or hostname given
-				// but no port. Append port
-				sockStr = sockStr + ":" + tcpPort
-			}
-		}
-	} else {
-		// IPv4 address. Append port if not specified
-		if !strings.Contains(sockStr, ":") {
-			sockStr = sockStr + ":" + tcpPort
-		}
-	}
-
+	sockStr = parseNetStr(s.net == "tcp6", sockStr)
 	a, err := net.ResolveTCPAddr(netStr, sockStr)
 	if err != nil {
 		log.Fatalf("Error parsing socket string '%s': %v", sockStr, err)
@@ -70,4 +45,10 @@ func (s tcpAddr) Listen() net.Listener {
 		log.Fatalln("Listen():", err)
 	}
 	return l
+}
+
+// ListenPacket is not implemented for TCP
+func (s tcpAddr) ListenPacket() net.PacketConn {
+	log.Fatalln("ListenPacket(): not implemented for TCP")
+	return nil
 }

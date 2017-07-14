@@ -77,3 +77,9 @@ func (s vsockAddr) Listen() net.Listener {
 	}
 	return l
 }
+
+// ListenPacket is not implemented for virtio sockets
+func (s vsockAddr) ListenPacket() net.PacketConn {
+	log.Fatalln("ListenPacket(): not implemented for virtio sockets")
+	return nil
+}

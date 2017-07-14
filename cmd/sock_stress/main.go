@@ -3,19 +3,15 @@ package main
 import (
 	"flag"
 	"fmt"
-	"hash"
-	"io"
 	"log"
+	"math/rand"
 	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
-
-	"crypto/md5"
-	"math/rand"
 	"sync/atomic"
+	"time"
 
 	"github.com/linuxkit/virtsock/pkg/hvsock"
 )
@@ -52,6 +48,13 @@ type Sock interface {
 	String() string
 	Dial(conid int) (Conn, error)
 	Listen() net.Listener
+	ListenPacket() net.PacketConn
+}
+
+// Test is an interface implemented a specific test
+type Test interface {
+	Server(s Sock)
+	Client(s Sock, connid int)
 }
 
 func init() {
@@ -112,10 +115,25 @@ func main() {
 		// vsock does not have debug
 	}
 
+	var n string
+	var s Sock
 	if serverStr != "" {
-		s := parseSockStr(serverStr)
+		n, s = parseSockStr(serverStr)
+	} else {
+		n, s = parseSockStr(clientStr)
+	}
+
+	var t Test
+	switch n {
+	case "udp", "udp4", "udp6":
+		t = newDgramEchoTest()
+	default:
+		t = newStreamEchoTest()
+	}
+
+	if serverStr != "" {
 		fmt.Printf("Starting server %s\n", s.String())
-		server(s)
+		t.Server(s)
 		return
 	}
 
@@ -128,13 +146,11 @@ func main() {
 		return
 	}
 
-	s := parseSockStr(clientStr)
 	fmt.Printf("Client connecting to %s\n", s.String())
-
 	if parallel <= 1 {
 		// No parallelism, run in the main thread.
 		for i := 0; i < connections; i++ {
-			client(s, i)
+			t.Client(s, i)
 			time.Sleep(time.Duration(sleepTime) * time.Second)
 		}
 		return
@@ -144,14 +160,14 @@ func main() {
 	var wg sync.WaitGroup
 	for i := 0; i < parallel; i++ {
 		wg.Add(1)
-		go parClient(&wg, s)
+		go parClient(t, &wg, s)
 	}
 	wg.Wait()
 }
 
 // parseSockStr parses a address of the form <proto>://foo where foo
 // is parsed by a proto specific parser
-func parseSockStr(inStr string) Sock {
+func parseSockStr(inStr string) (string, Sock) {
 	u, err := url.Parse(inStr)
 	if err != nil {
 		log.Fatalf("Failed to parse %s: %v", inStr, err)
@@ -161,237 +177,27 @@ func parseSockStr(inStr string) Sock {
 	}
 	switch u.Scheme {
 	case "vsock":
-		return vsockParseSockStr(u.Host)
+		return u.Scheme, vsockParseSockStr(u.Host)
 	case "hvsock":
-		return hvsockParseSockStr(u.Host)
+		return u.Scheme, hvsockParseSockStr(u.Host)
 	case "tcp", "tcp4", "tcp6":
-		return tcpParseSockStr(u.Scheme, u.Host)
+		return u.Scheme, tcpParseSockStr(u.Scheme, u.Host)
+	case "udp", "udp4", "udo6":
+		return u.Scheme, udpParseSockStr(u.Scheme, u.Host)
 	case "unix":
-		return unixParseSockStr(u.Path)
+		return u.Scheme, unixParseSockStr(u.Path)
 	}
 	log.Fatalf("Unknown address scheme: '%s'", u.Scheme)
-	return nil
+	return "", nil
 }
 
-func server(s Sock) {
-	l := s.Listen()
-	defer l.Close()
-
-	connid := 0
-
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			log.Fatalf("Accept(): %s\n", err)
-		}
-
-		prDebug("[%05d] accept(): %s -> %s \n", connid, conn.RemoteAddr(), conn.LocalAddr())
-		go handleRequest(conn, connid)
-		connid++
-	}
-}
-
-func handleRequest(c net.Conn, connid int) {
-	defer func() {
-		prDebug("[%05d] Closing\n", connid)
-		err := c.Close()
-		if err != nil {
-			prError("[%05d] Close(): %s\n", connid, err)
-		}
-	}()
-
-	start := time.Now()
-
-	n, err := io.Copy(c, c)
-	if err != nil {
-		prError("[%05d] Copy(): %s", connid, err)
-		return
-	}
-
-	diffTime := time.Since(start)
-	prInfo("[%05d] ECHOED: %10d bytes in %10.4f ms\n", connid, n, diffTime.Seconds()*1000)
-}
-
-func parClient(wg *sync.WaitGroup, s Sock) {
+func parClient(t Test, wg *sync.WaitGroup, s Sock) {
 	connid := int(atomic.AddInt32(&connCounter, 1))
 	for connid < connections {
-		client(s, connid)
+		t.Client(s, connid)
 		connid = int(atomic.AddInt32(&connCounter, 1))
 		time.Sleep(time.Duration(sleepTime) * time.Second)
 	}
 
 	wg.Done()
-}
-
-func md5Hash(h hash.Hash) [16]byte {
-	if h.Size() != md5.Size {
-		log.Fatalln("Hash is not an md5!")
-	}
-	s := h.Sum(nil) // Gets a slice
-
-	var r [16]byte
-
-	for i, b := range s {
-		r[i] = b
-	}
-	return r
-}
-
-func client(s Sock, conid int) {
-	c, err := s.Dial(conid)
-	if err != nil {
-		prError("[%05d] Failed to Dial: %s %s\n", conid, s, err)
-		return
-	}
-	defer c.Close()
-
-	// Create buffer with random data and random length.
-	// Make sure the buffer is not zero-length
-	buflen := minDataLen
-	if maxDataLen > minDataLen {
-		buflen += rand.Intn(maxDataLen - minDataLen + 1)
-	}
-	hash0 := md5.New()
-
-	var txTime, rxTime time.Duration
-	start := time.Now()
-
-	w := make(chan int)
-	go func() {
-		total := 0
-		remaining := buflen
-		for remaining > 0 {
-			batch := 0
-			bufsize := minBufLen
-			if maxBufLen > minBufLen {
-				bufsize += rand.Intn(maxBufLen - minBufLen + 1)
-			}
-			if remaining > bufsize {
-				batch = bufsize
-			} else {
-				batch = remaining
-			}
-
-			txbuf := randBuf(batch)
-			hash0.Write(txbuf)
-
-			e := make(chan error, 0)
-			go func() {
-				l, err := c.Write(txbuf)
-				if err != nil {
-					e <- err
-				} else if l != batch {
-					e <- fmt.Errorf("Sent incorrect length: expected %d, got %d", batch, l)
-				} else {
-					e <- nil
-				}
-			}()
-
-			select {
-			case err := <-e:
-				if err != nil {
-					prError("[%05d] Failed to send: %s\n", conid, err)
-					break
-				}
-			case <-time.After(ioTimeout):
-				prError("[%05d] Send timed out\n", conid)
-				break
-			}
-
-			total += batch
-			remaining -= batch
-		}
-
-		// Tell the other end that we are done
-		c.CloseWrite()
-
-		txTime = time.Since(start)
-		w <- total
-	}()
-
-	hash1 := md5.New()
-
-	totalReceived := 0
-	remaining := buflen
-	for remaining > 0 {
-		batch := 0
-		bufsize := minBufLen
-		if maxBufLen > minBufLen {
-			bufsize += rand.Intn(maxBufLen - minBufLen + 1)
-		}
-		if remaining > bufsize {
-			batch = bufsize
-		} else {
-			batch = remaining
-		}
-
-		rxbuf := make([]byte, batch)
-
-		e := make(chan error, 0)
-		go func() {
-			l, err := io.ReadFull(c, rxbuf)
-			if err != nil {
-				e <- err
-			} else if l != batch {
-				e <- fmt.Errorf("Received incorrect length, expected %d, got %d", batch, l)
-			} else {
-				e <- nil
-			}
-		}()
-
-		select {
-		case err := <-e:
-			if err != nil {
-				prError("[%05d] Failed to receive: %s\n", conid, err)
-				break
-			}
-		case <-time.After(ioTimeout):
-			prError("[%05d] Receive timed out\n", conid)
-			break
-		}
-
-		hash1.Write(rxbuf)
-		remaining -= batch
-		totalReceived += batch
-	}
-
-	rxTime = time.Since(start)
-	totalSent := <-w
-
-	csum0 := md5Hash(hash0)
-	prDebug("[%05d] TX: %d bytes, md5=%02x in %s\n", conid, totalSent, csum0, txTime)
-
-	csum1 := md5Hash(hash1)
-	prInfo("[%05d] TX/RX: %10d bytes in %10.4f ms\n", conid, totalReceived, rxTime.Seconds()*1000)
-	if csum0 != csum1 {
-		prError("[%05d] Checksums don't match", conid)
-	}
-}
-
-func randBuf(n int) []byte {
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = byte(rand.Intn(255))
-	}
-	return b
-}
-
-func prError(format string, args ...interface{}) {
-	if exitOnError {
-		log.Fatalf(format, args...)
-	} else {
-		log.Printf(format, args...)
-	}
-}
-
-func prInfo(format string, args ...interface{}) {
-	if verbose > 0 {
-		log.Printf(format, args...)
-	}
-}
-
-func prDebug(format string, args ...interface{}) {
-	if verbose > 1 {
-		log.Printf(format, args...)
-	}
 }
