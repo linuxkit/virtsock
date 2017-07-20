@@ -182,7 +182,7 @@ func parseSockStr(inStr string) (string, Sock) {
 		return u.Scheme, hvsockParseSockStr(u.Host)
 	case "tcp", "tcp4", "tcp6":
 		return u.Scheme, tcpParseSockStr(u.Scheme, u.Host)
-	case "udp", "udp4", "udo6":
+	case "udp", "udp4", "udp6":
 		return u.Scheme, udpParseSockStr(u.Scheme, u.Host)
 	case "unix":
 		return u.Scheme, unixParseSockStr(u.Path)
