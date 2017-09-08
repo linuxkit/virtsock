@@ -7,8 +7,10 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -40,17 +42,15 @@ var (
 /* rfc5425 like scheme, see section 4.3 */
 func rfc5425Write(conn vConn, buf []byte) error {
 
-	msglen := fmt.Sprintf("%d ", len(buf))
+	msglen := strings.NewReader(fmt.Sprintf("%d ", len(buf)))
 
-	_, err := conn.Write([]byte(msglen))
-	/* XXX todo, check for serious vs retriable errors */
+	_, err := io.Copy(conn, msglen)
 	if err != nil {
 		console.Printf("Error in length write: %s", err)
 		return err
 	}
 
-	_, err = conn.Write(buf)
-	/* XXX todo, check for serious vs retriable errors */
+	_, err = io.Copy(conn, bytes.NewReader(buf))
 	if err != nil {
 		console.Printf("Error in buf write: %s", err)
 	}
