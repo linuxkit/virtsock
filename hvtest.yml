@@ -1,22 +1,18 @@
 kernel:
   # Choose your kernel
-  image: "linuxkit/kernel:4.11.x_dbg"
-  # image: "linuxkit/kernel:4.11.x"
-  # image: "linuxkit/kernel:4.10.x"
-  # image: "linuxkit/kernel:4.9.x"
-  # image: "linuxkit/kernel:4.4.x"
+  image: linuxkit/kernel:4.14
   cmdline: "console=ttyS0 page_poison=1"
 init:
-  - linuxkit/init:1b8a7e394d2ec2f1fdb4d67645829d1b5bdca037
-  - linuxkit/runc:3a4e6cbf15470f62501b019b55e1caac5ee7689f
-  - linuxkit/containerd:b50181bc6e0084e5fcd6b6ad3cf433c4f66cae5a
+  - linuxkit/init:42a92119e1ca10380e0d33e26c0cbcf85b9b3558
+  - linuxkit/runc:1b0741d07949c0acc444cd6a04ee7f833443579d
+  - linuxkit/containerd:bfb61cc1d26c39cd4b2bc08f7a9963fefa0ef3bf
   - hvtest-local
 onboot:
   - name: sysctl
-    image: "linuxkit/sysctl:3aa6bc663c2849ef239be7d941d3eaf3e6fcc018"
+    image: linuxkit/sysctl:a9ad57ed738a31ea9380cd73236866c312b35489
 services:
   - name: rngd
-    image: "linuxkit/rngd:1fa4de44c961bb5075647181891a3e7e7ba51c31"
+    image: linuxkit/rngd:842e5e8ece7934f0cab9fd0027b595ff3471e5b9
 trust:
   org:
     - linuxkit
