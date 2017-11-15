@@ -13,6 +13,17 @@ onboot:
 services:
   - name: rngd
     image: linuxkit/rngd:842e5e8ece7934f0cab9fd0027b595ff3471e5b9
+  - name: getty
+    image: linuxkit/getty:6af22c32c98536a79230eef000e9abd06b037faa
+    binds:
+      - /usr/bin/sock_stress:/usr/bin/sock_stress
+      - /tmp:/tmp
+      - /etc:/hostroot/etc
+      - /var/log:/var/log
+      - /dev:/dev
+      - /sys:/sys
+    env:
+      - INSECURE=true
 trust:
   org:
     - linuxkit
