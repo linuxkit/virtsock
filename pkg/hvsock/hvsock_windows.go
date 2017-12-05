@@ -1,7 +1,6 @@
 package hvsock
 
 import (
-	"errors"
 	"io"
 	"log"
 	"runtime"
@@ -25,6 +24,8 @@ const (
 	sysSHV_PROTO_RAW = 1
 
 	socket_error = uintptr(^uint32(0))
+
+	invalid_socket = uintptr(^uint32(0))
 )
 
 var (
@@ -125,7 +126,7 @@ func bind(s syscall.Handle, a HypervAddr) error {
 }
 
 func accept(s syscall.Handle, a *HypervAddr) (syscall.Handle, error) {
-	return 0, errors.New("accept(): Unimplemented")
+	return sys_accept(s)
 }
 
 //

@@ -37,6 +37,7 @@ var (
 	modwinmm    = syscall.NewLazyDLL("winmm.dll")
 	modkernel32 = syscall.NewLazyDLL("kernel32.dll")
 
+	procAccept                             = modws2_32.NewProc("accept")
 	procConnect                            = modws2_32.NewProc("connect")
 	procbind                               = modws2_32.NewProc("bind")
 	procCancelIoEx                         = modkernel32.NewProc("CancelIoEx")
@@ -69,6 +70,20 @@ func errnoErr(e syscall.Errno) error {
 	// error values see on Windows. (perhaps when running
 	// all.bat?)
 	return e
+}
+
+func sys_accept(s syscall.Handle) (accepthandle syscall.Handle, err error) {
+	r1, _, e1 := syscall.Syscall(procAccept.Addr(), 3, uintptr(s), uintptr(uint(0)), uintptr(uint(0)))
+	accepthandle = syscall.Handle(r1)
+	if r1 == invalid_socket {
+		if e1 != 0 {
+			err = errnoErr(e1)
+		} else {
+			err = syscall.EINVAL
+		}
+	}
+
+	return
 }
 
 func sys_connect(s syscall.Handle, name unsafe.Pointer, namelen int32) (err error) {
