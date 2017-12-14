@@ -1,20 +1,20 @@
 kernel:
   # Choose your kernel
-  image: linuxkit/kernel:4.14
-  cmdline: "console=ttyS0 page_poison=1"
+  image: linuxkit/kernel:4.14.6
+  cmdline: "console=ttyS0"
 init:
-  - linuxkit/init:42a92119e1ca10380e0d33e26c0cbcf85b9b3558
-  - linuxkit/runc:1b0741d07949c0acc444cd6a04ee7f833443579d
-  - linuxkit/containerd:bfb61cc1d26c39cd4b2bc08f7a9963fefa0ef3bf
+  - linuxkit/init:9250948d0de494df8a811edb3242b4584057cfe4
+  - linuxkit/runc:abc3f292653e64a2fd488e9675ace19a55ec7023
+  - linuxkit/containerd:e58a382c33bb509ba3e0e8170dfaa5a100504c5b
   - hvtest-local
 onboot:
   - name: sysctl
-    image: linuxkit/sysctl:a9ad57ed738a31ea9380cd73236866c312b35489
+    image: linuxkit/sysctl:ce3bde5118a41092f1b7048c85d14fb35237ed45
 services:
   - name: rngd
-    image: linuxkit/rngd:842e5e8ece7934f0cab9fd0027b595ff3471e5b9
+    image: linuxkit/rngd:94e01a4b16fadb053455cdc2269c4eb0b39199cd
   - name: getty
-    image: linuxkit/getty:6af22c32c98536a79230eef000e9abd06b037faa
+    image: linuxkit/getty:22e27189b6b354e1d5d38fc0536a5af3f2adb79f
     binds:
       - /usr/bin/sock_stress:/usr/bin/sock_stress
       - /tmp:/tmp
