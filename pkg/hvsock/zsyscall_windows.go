@@ -50,6 +50,7 @@ var (
 // Errno values.
 const (
 	errnoERROR_IO_PENDING = 997
+	socketError = uintptr(^uint32(0))
 )
 
 var (
@@ -73,7 +74,7 @@ func errnoErr(e syscall.Errno) error {
 
 func sys_connect(s syscall.Handle, name unsafe.Pointer, namelen int32) (err error) {
 	r1, _, e1 := syscall.Syscall(procConnect.Addr(), 3, uintptr(s), uintptr(name), uintptr(namelen))
-	if r1 == socket_error {
+	if r1 == socketError {
 		if e1 != 0 {
 			err = errnoErr(e1)
 		} else {
@@ -86,7 +87,7 @@ func sys_connect(s syscall.Handle, name unsafe.Pointer, namelen int32) (err erro
 
 func sys_bind(s syscall.Handle, name unsafe.Pointer, namelen int32) (err error) {
 	r1, _, e1 := syscall.Syscall(procbind.Addr(), 3, uintptr(s), uintptr(name), uintptr(namelen))
-	if r1 == socket_error {
+	if r1 == socketError {
 		if e1 != 0 {
 			err = errnoErr(e1)
 		} else {
