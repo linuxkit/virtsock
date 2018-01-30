@@ -68,8 +68,8 @@ func Listen(addr HypervAddr) (net.Listener, error) {
 // Hyper-V socket connection implementation
 //
 
-// HVsockConn represent a Hyper-V connection. Complex mostly due to asynch send()/recv() syscalls.
-type HVsockConn struct {
+// hvsockConn represent a Hyper-V connection. Complex mostly due to asynch send()/recv() syscalls.
+type hvsockConn struct {
 	fd     syscall.Handle
 	local  HypervAddr
 	remote HypervAddr
@@ -80,9 +80,9 @@ type HVsockConn struct {
 	writeDeadline deadlineHandler
 }
 
-func newHVsockConn(h syscall.Handle, local HypervAddr, remote HypervAddr) (*HVsockConn, error) {
+func newHVsockConn(h syscall.Handle, local HypervAddr, remote HypervAddr) (*hvsockConn, error) {
 	ioInitOnce.Do(initIo)
-	v := &HVsockConn{fd: h, local: local, remote: remote}
+	v := &hvsockConn{fd: h, local: local, remote: remote}
 
 	_, err := createIoCompletionPort(h, ioCompletionPort, 0, 0xffffffff)
 	if err != nil {
@@ -100,17 +100,17 @@ func newHVsockConn(h syscall.Handle, local HypervAddr, remote HypervAddr) (*HVso
 }
 
 // LocalAddr returns the local address of a connection
-func (v *HVsockConn) LocalAddr() net.Addr {
+func (v *hvsockConn) LocalAddr() net.Addr {
 	return v.local
 }
 
 // RemoteAddr returns the remote address of a connection
-func (v *HVsockConn) RemoteAddr() net.Addr {
+func (v *hvsockConn) RemoteAddr() net.Addr {
 	return v.remote
 }
 
 // Close closes the connection
-func (v *HVsockConn) Close() error {
+func (v *hvsockConn) Close() error {
 	if !v.closing {
 		// cancel all IO and wait for it to complete
 		v.closing = true
@@ -124,17 +124,17 @@ func (v *HVsockConn) Close() error {
 }
 
 // CloseRead shuts down the reading side of a hvsock connection
-func (v *HVsockConn) CloseRead() error {
+func (v *hvsockConn) CloseRead() error {
 	return syscall.Shutdown(v.fd, syscall.SHUT_RD)
 }
 
 // CloseWrite shuts down the writing side of a hvsock connection
-func (v *HVsockConn) CloseWrite() error {
+func (v *hvsockConn) CloseWrite() error {
 	return syscall.Shutdown(v.fd, syscall.SHUT_WR)
 }
 
 // Read reads data from the connection
-func (v *HVsockConn) Read(buf []byte) (int, error) {
+func (v *hvsockConn) Read(buf []byte) (int, error) {
 	var b syscall.WSABuf
 	var f uint32
 
@@ -167,7 +167,7 @@ func (v *HVsockConn) Read(buf []byte) (int, error) {
 
 // Write writes data over the connection
 // TODO(rn): Remove once 4.9.x support is deprecated
-func (v *HVsockConn) Write(buf []byte) (int, error) {
+func (v *hvsockConn) Write(buf []byte) (int, error) {
 	written := 0
 	toWrite := len(buf)
 	for toWrite > 0 {
@@ -186,7 +186,7 @@ func (v *HVsockConn) Write(buf []byte) (int, error) {
 	return written, nil
 }
 
-func (v *HVsockConn) write(buf []byte) (int, error) {
+func (v *hvsockConn) write(buf []byte) (int, error) {
 	var b syscall.WSABuf
 	var f uint32
 
@@ -214,17 +214,17 @@ func (v *HVsockConn) write(buf []byte) (int, error) {
 }
 
 // SetReadDeadline implementation for Hyper-V sockets
-func (v *HVsockConn) SetReadDeadline(deadline time.Time) error {
+func (v *hvsockConn) SetReadDeadline(deadline time.Time) error {
 	return v.readDeadline.set(deadline)
 }
 
 // SetWriteDeadline implementation for Hyper-V sockets
-func (v *HVsockConn) SetWriteDeadline(deadline time.Time) error {
+func (v *hvsockConn) SetWriteDeadline(deadline time.Time) error {
 	return v.writeDeadline.set(deadline)
 }
 
 // SetDeadline implementation for Hyper-V sockets
-func (v *HVsockConn) SetDeadline(deadline time.Time) error {
+func (v *hvsockConn) SetDeadline(deadline time.Time) error {
 	if err := v.SetReadDeadline(deadline); err != nil {
 		return err
 	}
@@ -272,11 +272,6 @@ func (b *atomicBool) isSet() bool { return atomic.LoadInt32((*int32)(b)) != 0 }
 func (b *atomicBool) setFalse()   { atomic.StoreInt32((*int32)(b), 0) }
 func (b *atomicBool) setTrue()    { atomic.StoreInt32((*int32)(b), 1) }
 
-const (
-	cFILE_SKIP_COMPLETION_PORT_ON_SUCCESS = 1
-	cFILE_SKIP_SET_EVENT_ON_HANDLE        = 2
-)
-
 type timeoutError struct{}
 
 func (e *timeoutError) Error() string   { return "i/o timeout" }
@@ -309,7 +304,7 @@ func initIo() {
 }
 
 // prepareIo prepares for a new IO operation
-func (v *HVsockConn) prepareIo() (*ioOperation, error) {
+func (v *hvsockConn) prepareIo() (*ioOperation, error) {
 	v.wg.Add(1)
 	if v.closing {
 		return nil, fmt.Errorf("HvSocket has already been closed")
@@ -337,7 +332,7 @@ func ioCompletionProcessor(h syscall.Handle) {
 
 // asyncIo processes the return value from Recv or Send, blocking until
 // the operation has actually completed.
-func (v *HVsockConn) asyncIo(c *ioOperation, d *deadlineHandler, bytes uint32, err error) (int, error) {
+func (v *hvsockConn) asyncIo(c *ioOperation, d *deadlineHandler, bytes uint32, err error) (int, error) {
 	if err != syscall.ERROR_IO_PENDING {
 		v.wg.Done()
 		return int(bytes), err

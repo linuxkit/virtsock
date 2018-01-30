@@ -151,52 +151,52 @@ func (v *hvsockListener) Addr() net.Addr {
 // Hyper-V socket connection implementation
 //
 
-// HVsockConn represents a connection over a Hyper-V socket
-type HVsockConn struct {
+// hvsockConn represents a connection over a Hyper-V socket
+type hvsockConn struct {
 	hvsock *os.File
 	fd     uintptr
 	local  *HypervAddr
 	remote *HypervAddr
 }
 
-func newHVsockConn(fd uintptr, local, remote *HypervAddr) *HVsockConn {
+func newHVsockConn(fd uintptr, local, remote *HypervAddr) *hvsockConn {
 	hvsock := os.NewFile(fd, fmt.Sprintf("hvsock:%d", fd))
-	return &HVsockConn{hvsock: hvsock, fd: fd, local: local, remote: remote}
+	return &hvsockConn{hvsock: hvsock, fd: fd, local: local, remote: remote}
 }
 
 // LocalAddr returns the local address of a connection
-func (v *HVsockConn) LocalAddr() net.Addr {
+func (v *hvsockConn) LocalAddr() net.Addr {
 	return v.local
 }
 
 // RemoteAddr returns the remote address of a connection
-func (v *HVsockConn) RemoteAddr() net.Addr {
+func (v *hvsockConn) RemoteAddr() net.Addr {
 	return v.remote
 }
 
 // Close closes the connection
-func (v *HVsockConn) Close() error {
+func (v *hvsockConn) Close() error {
 	return v.hvsock.Close()
 }
 
 // CloseRead shuts down the reading side of a hvsock connection
-func (v *HVsockConn) CloseRead() error {
+func (v *hvsockConn) CloseRead() error {
 	return syscall.Shutdown(int(v.fd), syscall.SHUT_RD)
 }
 
 // CloseWrite shuts down the writing side of a hvsock connection
-func (v *HVsockConn) CloseWrite() error {
+func (v *hvsockConn) CloseWrite() error {
 	return syscall.Shutdown(int(v.fd), syscall.SHUT_WR)
 }
 
 // Read reads data from the connection
-func (v *HVsockConn) Read(buf []byte) (int, error) {
+func (v *hvsockConn) Read(buf []byte) (int, error) {
 	return v.hvsock.Read(buf)
 }
 
 // Write writes data over the connection
 // TODO(rn): replace with a straight call to v.hvsock.Write() once 4.9.x support is deprecated
-func (v *HVsockConn) Write(buf []byte) (int, error) {
+func (v *hvsockConn) Write(buf []byte) (int, error) {
 	written := 0
 	toWrite := len(buf)
 	for toWrite > 0 {
@@ -216,22 +216,22 @@ func (v *HVsockConn) Write(buf []byte) (int, error) {
 }
 
 // SetDeadline sets the read and write deadlines associated with the connection
-func (v *HVsockConn) SetDeadline(t time.Time) error {
+func (v *hvsockConn) SetDeadline(t time.Time) error {
 	return nil // FIXME
 }
 
 // SetReadDeadline sets the deadline for future Read calls.
-func (v *HVsockConn) SetReadDeadline(t time.Time) error {
+func (v *hvsockConn) SetReadDeadline(t time.Time) error {
 	return nil // FIXME
 }
 
 // SetWriteDeadline sets the deadline for future Write calls
-func (v *HVsockConn) SetWriteDeadline(t time.Time) error {
+func (v *hvsockConn) SetWriteDeadline(t time.Time) error {
 	return nil // FIXME
 }
 
 // File duplicates the underlying socket descriptor and returns it.
-func (v *HVsockConn) File() (*os.File, error) {
+func (v *hvsockConn) File() (*os.File, error) {
 	// This is equivalent to dup(2) but creates the new fd with CLOEXEC already set.
 	r0, _, e1 := syscall.Syscall(syscall.SYS_FCNTL, uintptr(v.hvsock.Fd()), syscall.F_DUPFD_CLOEXEC, 0)
 	if e1 != 0 {

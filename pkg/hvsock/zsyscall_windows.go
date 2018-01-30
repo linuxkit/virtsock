@@ -50,7 +50,10 @@ var (
 // Errno values.
 const (
 	errnoERROR_IO_PENDING = 997
-	socketError = uintptr(^uint32(0))
+	socketError           = uintptr(^uint32(0))
+
+	cFILE_SKIP_COMPLETION_PORT_ON_SUCCESS = 1
+	cFILE_SKIP_SET_EVENT_ON_HANDLE        = 2
 )
 
 var (
