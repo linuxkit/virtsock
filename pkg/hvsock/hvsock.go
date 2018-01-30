@@ -64,16 +64,18 @@ func GUIDFromString(s string) (GUID, error) {
 	return g, err
 }
 
-// HypervAddr combined "address" and "port" structure
-type HypervAddr struct {
+// Addr represents a Hyper-V socket address
+type Addr struct {
 	VMID      GUID
 	ServiceID GUID
 }
 
 // Network returns the type of network for Hyper-V sockets
-func (a HypervAddr) Network() string { return "hvsock" }
+func (a Addr) Network() string {
+	return "hvsock"
+}
 
-func (a HypervAddr) String() string {
+func (a Addr) String() string {
 	vmid := a.VMID.String()
 	svc := a.ServiceID.String()
 

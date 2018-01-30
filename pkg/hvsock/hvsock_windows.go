@@ -36,7 +36,7 @@ var (
 )
 
 // Dial a Hyper-V socket address
-func Dial(raddr HypervAddr) (Conn, error) {
+func Dial(raddr Addr) (Conn, error) {
 	fd, err := syscall.Socket(hvsockAF, syscall.SOCK_STREAM, hvsockRaw)
 	if err != nil {
 		return nil, err
@@ -52,7 +52,7 @@ func Dial(raddr HypervAddr) (Conn, error) {
 		return nil, errors.Wrapf(err, "connect(%s) failed", raddr)
 	}
 
-	v, err := newHVsockConn(fd, HypervAddr{VMID: GUIDZero, ServiceID: GUIDZero}, raddr)
+	v, err := newHVsockConn(fd, Addr{VMID: GUIDZero, ServiceID: GUIDZero}, raddr)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +60,7 @@ func Dial(raddr HypervAddr) (Conn, error) {
 }
 
 // Listen returns a net.Listener which can accept connections on the given port
-func Listen(addr HypervAddr) (net.Listener, error) {
+func Listen(addr Addr) (net.Listener, error) {
 	return nil, fmt.Errorf("Listen() unimplemented")
 }
 
@@ -71,8 +71,8 @@ func Listen(addr HypervAddr) (net.Listener, error) {
 // hvsockConn represent a Hyper-V connection. Complex mostly due to asynch send()/recv() syscalls.
 type hvsockConn struct {
 	fd     syscall.Handle
-	local  HypervAddr
-	remote HypervAddr
+	local  Addr
+	remote Addr
 
 	wg            sync.WaitGroup
 	closing       bool
@@ -80,7 +80,7 @@ type hvsockConn struct {
 	writeDeadline deadlineHandler
 }
 
-func newHVsockConn(h syscall.Handle, local HypervAddr, remote HypervAddr) (*hvsockConn, error) {
+func newHVsockConn(h syscall.Handle, local Addr, remote Addr) (*hvsockConn, error) {
 	ioInitOnce.Do(initIo)
 	v := &hvsockConn{fd: h, local: local, remote: remote}
 
@@ -242,7 +242,7 @@ type rawSockaddrHyperv struct {
 }
 
 // Utility function to build a struct sockaddr for syscalls.
-func (a HypervAddr) sockaddr(sa *rawSockaddrHyperv) (unsafe.Pointer, int32, error) {
+func (a Addr) sockaddr(sa *rawSockaddrHyperv) (unsafe.Pointer, int32, error) {
 	sa.Family = hvsockAF
 	sa.Reserved = 0
 	for i := 0; i < len(sa.VMID); i++ {

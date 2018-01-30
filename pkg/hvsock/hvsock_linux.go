@@ -52,7 +52,7 @@ const (
 )
 
 // Dial a Hyper-V socket address
-func Dial(raddr HypervAddr) (Conn, error) {
+func Dial(raddr Addr) (Conn, error) {
 	fd, err := syscall.Socket(hvsockAF, syscall.SOCK_STREAM, hvsockRaw)
 	if err != nil {
 		return nil, err
@@ -80,11 +80,11 @@ func Dial(raddr HypervAddr) (Conn, error) {
 		break
 	}
 
-	return newHVsockConn(uintptr(fd), &HypervAddr{VMID: GUIDZero, ServiceID: GUIDZero}, &raddr), nil
+	return newHVsockConn(uintptr(fd), &Addr{VMID: GUIDZero, ServiceID: GUIDZero}, &raddr), nil
 }
 
 // Listen returns a net.Listener which can accept connections on the given port
-func Listen(addr HypervAddr) (net.Listener, error) {
+func Listen(addr Addr) (net.Listener, error) {
 	fd, err := syscall.Socket(hvsockAF, syscall.SOCK_STREAM, hvsockRaw)
 	if err != nil {
 		return nil, err
@@ -118,7 +118,7 @@ func Listen(addr HypervAddr) (net.Listener, error) {
 
 type hvsockListener struct {
 	fd    int
-	local HypervAddr
+	local Addr
 }
 
 // Accept accepts an incoming call and returns the new connection.
@@ -132,7 +132,7 @@ func (v *hvsockListener) Accept() (net.Conn, error) {
 		return nil, errors.Wrapf(err, "accept(%s) failed", v.local)
 	}
 
-	remote := &HypervAddr{VMID: guidFromC(acceptSA.shv_vm_id), ServiceID: guidFromC(acceptSA.shv_service_id)}
+	remote := &Addr{VMID: guidFromC(acceptSA.shv_vm_id), ServiceID: guidFromC(acceptSA.shv_service_id)}
 	return newHVsockConn(uintptr(fd), &v.local, remote), nil
 }
 
@@ -155,11 +155,11 @@ func (v *hvsockListener) Addr() net.Addr {
 type hvsockConn struct {
 	hvsock *os.File
 	fd     uintptr
-	local  *HypervAddr
-	remote *HypervAddr
+	local  *Addr
+	remote *Addr
 }
 
-func newHVsockConn(fd uintptr, local, remote *HypervAddr) *hvsockConn {
+func newHVsockConn(fd uintptr, local, remote *Addr) *hvsockConn {
 	hvsock := os.NewFile(fd, fmt.Sprintf("hvsock:%d", fd))
 	return &hvsockConn{hvsock: hvsock, fd: fd, local: local, remote: remote}
 }
