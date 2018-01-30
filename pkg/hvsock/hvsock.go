@@ -26,6 +26,17 @@ var (
 	GUIDParent, _ = GUIDFromString("a42e7cda-d03f-480c-9cc2-a4de20abb878")
 )
 
+const (
+	// The Hyper-V socket implementation used in the 4.9.x kernels
+	// seems to fail silently if messages are above 8k. The newer
+	// implementation in the 4.14.x (and newer) kernels seems to
+	// work fine with larger messages. This is constant is used as
+	// a temporary workaround to limit the amount of data sent and
+	// should be removed once support for 4.9.x kernels is
+	// deprecated.
+	maxMsgSize = 8 * 1024
+)
+
 // GUID is used by Hypper-V sockets for "addresses" and "ports"
 type GUID [16]byte
 
@@ -74,4 +85,12 @@ type Conn interface {
 	net.Conn
 	CloseRead() error
 	CloseWrite() error
+}
+
+// Since there doesn't seem to be a standard min function
+func min(x, y int) int {
+	if x < y {
+		return x
+	}
+	return y
 }

@@ -195,8 +195,24 @@ func (v *HVsockConn) Read(buf []byte) (int, error) {
 }
 
 // Write writes data over the connection
+// TODO(rn): replace with a straight call to v.hvsock.Write() once 4.9.x support is deprecated
 func (v *HVsockConn) Write(buf []byte) (int, error) {
-	return v.hvsock.Write(buf)
+	written := 0
+	toWrite := len(buf)
+	for toWrite > 0 {
+		thisBatch := min(toWrite, maxMsgSize)
+		n, err := v.hvsock.Write(buf[written : written+thisBatch])
+		if err != nil {
+			return written, err
+		}
+		if n != thisBatch {
+			return written, fmt.Errorf("short write %d != %d", n, thisBatch)
+		}
+		toWrite -= n
+		written += n
+	}
+
+	return written, nil
 }
 
 // SetDeadline sets the read and write deadlines associated with the connection

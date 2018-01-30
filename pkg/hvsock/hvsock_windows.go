@@ -166,7 +166,27 @@ func (v *HVsockConn) Read(buf []byte) (int, error) {
 }
 
 // Write writes data over the connection
+// TODO(rn): Remove once 4.9.x support is deprecated
 func (v *HVsockConn) Write(buf []byte) (int, error) {
+	written := 0
+	toWrite := len(buf)
+	for toWrite > 0 {
+		thisBatch := min(toWrite, maxMsgSize)
+		n, err := v.write(buf[written : written+thisBatch])
+		if err != nil {
+			return written, err
+		}
+		if n != thisBatch {
+			return written, fmt.Errorf("short write %d != %d", n, thisBatch)
+		}
+		toWrite -= n
+		written += n
+	}
+
+	return written, nil
+}
+
+func (v *HVsockConn) write(buf []byte) (int, error) {
 	var b syscall.WSABuf
 	var f uint32
 
