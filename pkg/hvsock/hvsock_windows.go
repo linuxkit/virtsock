@@ -57,16 +57,70 @@ func Dial(raddr Addr) (Conn, error) {
 		return nil, errors.Wrapf(err, "connect(%s) failed", raddr)
 	}
 
-	v, err := newHVsockConn(fd, Addr{VMID: GUIDZero, ServiceID: GUIDZero}, raddr)
-	if err != nil {
-		return nil, err
-	}
-	return v, nil
+	return newHVsockConn(fd, Addr{VMID: GUIDZero, ServiceID: GUIDZero}, raddr)
 }
 
 // Listen returns a net.Listener which can accept connections on the given port
 func Listen(addr Addr) (net.Listener, error) {
-	return nil, fmt.Errorf("Listen() unimplemented")
+	fd, err := syscall.Socket(hvsockAF, syscall.SOCK_STREAM, hvsockRaw)
+	if err != nil {
+		return nil, err
+	}
+
+	var sa rawSockaddrHyperv
+	ptr, n, err := addr.sockaddr(&sa)
+	if err != nil {
+		return nil, err
+	}
+	if err := sys_bind(fd, ptr, n); err != nil {
+		return nil, fmt.Errorf("bind(%s) failed with %v", addr, err)
+	}
+
+	err = syscall.Listen(fd, syscall.SOMAXCONN)
+	if err != nil {
+		return nil, errors.Wrapf(err, "listen(%s) failed", addr)
+	}
+
+	return &hvsockListener{fd, addr}, nil
+}
+
+//
+// Hyper-v sockets Listener implementation
+//
+
+type hvsockListener struct {
+	fd    syscall.Handle
+	local Addr
+}
+
+// Accept accepts an incoming call and returns the new connection
+func (v *hvsockListener) Accept() (net.Conn, error) {
+	var sa rawSockaddrHyperv
+	var n = int32(unsafe.Sizeof(sa))
+	fd, err := sys_accept(v.fd, &sa, &n)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract an Addr from sa
+	raddr := Addr{}
+	for i := 0; i < len(raddr.VMID); i++ {
+		raddr.VMID[i] = sa.VMID[i]
+	}
+	for i := 0; i < len(raddr.ServiceID); i++ {
+		raddr.ServiceID[i] = sa.ServiceID[i]
+	}
+	return newHVsockConn(fd, v.local, raddr)
+}
+
+// Close closes the listening connection
+func (v *hvsockListener) Close() error {
+	return syscall.Close(v.fd)
+}
+
+// Addr returns the address the Listener is listening on
+func (v *hvsockListener) Addr() net.Addr {
+	return v.local
 }
 
 //
