@@ -17,11 +17,11 @@ import (
 func SocketMode(m string) {
 }
 
-// Convert a generic unix.Sockaddr to a VsockAddr
-func sockaddrToVsock(sa unix.Sockaddr) *VsockAddr {
+// Convert a generic unix.Sockaddr to a Addr
+func sockaddrToVsock(sa unix.Sockaddr) *Addr {
 	switch sa := sa.(type) {
 	case *unix.SockaddrVM:
-		return &VsockAddr{CID: sa.CID, Port: sa.Port}
+		return &Addr{CID: sa.CID, Port: sa.Port}
 	}
 	return nil
 }
@@ -43,7 +43,7 @@ func Dial(cid, port uint32) (Conn, error) {
 		}
 		break
 	}
-	return newVsockConn(uintptr(fd), nil, &VsockAddr{cid, port}), nil
+	return newVsockConn(uintptr(fd), nil, &Addr{cid, port}), nil
 }
 
 // Listen returns a net.Listener which can accept connections on the given port
@@ -62,12 +62,12 @@ func Listen(cid, port uint32) (net.Listener, error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "listen() on %08x.%08x failed", cid, port)
 	}
-	return &vsockListener{fd, VsockAddr{cid, port}}, nil
+	return &vsockListener{fd, Addr{cid, port}}, nil
 }
 
 type vsockListener struct {
 	fd    int
-	local VsockAddr
+	local Addr
 }
 
 // Accept accepts an incoming call and returns the new connection.
@@ -94,11 +94,11 @@ func (v *vsockListener) Addr() net.Addr {
 type vsockConn struct {
 	vsock  *os.File
 	fd     uintptr
-	local  *VsockAddr
-	remote *VsockAddr
+	local  *Addr
+	remote *Addr
 }
 
-func newVsockConn(fd uintptr, local, remote *VsockAddr) *vsockConn {
+func newVsockConn(fd uintptr, local, remote *Addr) *vsockConn {
 	vsock := os.NewFile(fd, fmt.Sprintf("vsock:%d", fd))
 	return &vsockConn{vsock: vsock, fd: fd, local: local, remote: remote}
 }
