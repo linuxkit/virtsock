@@ -51,6 +51,19 @@ const (
 	hvsockRaw = 1  // SHV_PROTO_RAW
 )
 
+// Supported returns if hvsocks are supported on your platform
+func Supported() bool {
+	// Try opening  a hvsockAF socket. If it works we are on older, i.e. 4.9.x kernels.
+	// 4.11 defines AF_SMC as 43 but it doesn't support protocol 1 so the
+	// socket() call should fail.
+	fd, err := syscall.Socket(hvsockAF, syscall.SOCK_STREAM, hvsockRaw)
+	if err != nil {
+		return false
+	}
+	syscall.Close(fd)
+	return true
+}
+
 // Dial a Hyper-V socket address
 func Dial(raddr Addr) (Conn, error) {
 	fd, err := syscall.Socket(hvsockAF, syscall.SOCK_STREAM, hvsockRaw)

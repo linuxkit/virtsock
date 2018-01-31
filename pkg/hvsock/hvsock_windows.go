@@ -35,6 +35,11 @@ var (
 	wsaData syscall.WSAData
 )
 
+// Supported returns if hvsocks are supported on your platform
+func Supported() bool {
+	return true
+}
+
 // Dial a Hyper-V socket address
 func Dial(raddr Addr) (Conn, error) {
 	fd, err := syscall.Socket(hvsockAF, syscall.SOCK_STREAM, hvsockRaw)
