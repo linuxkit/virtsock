@@ -13,7 +13,7 @@ var (
 )
 
 type hvsockAddr struct {
-	addr hvsock.HypervAddr
+	addr hvsock.Addr
 }
 
 // hvsockParseSockStr extracts the vmid and svcid from a string.
@@ -21,7 +21,7 @@ type hvsockAddr struct {
 // empty string. For VMID we also support "parent" and assume
 // "loopback" if the string can't be parsed.
 func hvsockParseSockStr(sockStr string) hvsockAddr {
-	a := hvsock.HypervAddr{hvsock.GUIDZero, svcid}
+	a := hvsock.Addr{hvsock.GUIDZero, svcid}
 	if sockStr == "" {
 		return hvsockAddr{a}
 	}
