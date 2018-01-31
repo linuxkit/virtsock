@@ -40,7 +40,7 @@ bin/sock_stress.exe: $(DEPS)
 linuxkit: build-in-container Dockerfile.linuxkit hvtest.yml
 	$(MAKE) -C c build-in-container
 	docker build -t hvtest-local -f Dockerfile.linuxkit .
-	moby build -format kernel+initrd,iso-efi hvtest.yml
+	linuxkit build -format kernel+initrd,iso-efi hvtest.yml
 
 clean:
 	rm -rf bin c/build
