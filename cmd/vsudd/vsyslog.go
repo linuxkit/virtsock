@@ -68,10 +68,25 @@ func forwardSyslogDatagram(buf []byte, portstr string) error {
 					console.Fatalln("Failed to parse GUID", portstr, err)
 				}
 
-				conn, err = hvsock.Dial(hvsock.Addr{VMID: hvsock.GUIDWildcard, ServiceID: svcid})
-				if err != nil {
-					console.Printf("Failed to dial hvsock port: %s", err)
-					continue
+				// Check which version of Hyper-V socket bindings to use
+				if hvsock.Supported() {
+
+					conn, err = hvsock.Dial(hvsock.Addr{VMID: hvsock.GUIDWildcard, ServiceID: svcid})
+					if err != nil {
+						console.Printf("Failed to dial hvsock port: %s", err)
+						continue
+					}
+				} else {
+					port, err := svcid.Port()
+					if err != nil {
+						log.Fatalf("Failed to convert hvsock port: %s", err)
+					}
+					conn, err = vsock.Dial(vsock.CIDHost, port)
+					if err != nil {
+						console.Printf("Failed to dial vsock port %d: %s", port, err)
+						continue
+					}
+
 				}
 			} else {
 				port, err := strconv.ParseUint(portstr, 10, 32)
