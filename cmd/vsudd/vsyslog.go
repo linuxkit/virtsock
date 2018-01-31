@@ -68,7 +68,7 @@ func forwardSyslogDatagram(buf []byte, portstr string) error {
 					console.Fatalln("Failed to parse GUID", portstr, err)
 				}
 
-				conn, err = hvsock.Dial(hvsock.HypervAddr{VMID: hvsock.GUIDWildcard, ServiceID: svcid})
+				conn, err = hvsock.Dial(hvsock.Addr{VMID: hvsock.GUIDWildcard, ServiceID: svcid})
 				if err != nil {
 					console.Printf("Failed to dial hvsock port: %s", err)
 					continue

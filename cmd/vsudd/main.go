@@ -134,7 +134,7 @@ func main() {
 			if err != nil {
 				log.Fatalln("Failed to parse GUID", portstr, err)
 			}
-			l, err = hvsock.Listen(hvsock.HypervAddr{VMID: hvsock.GUIDWildcard, ServiceID: svcid})
+			l, err = hvsock.Listen(hvsock.Addr{VMID: hvsock.GUIDWildcard, ServiceID: svcid})
 			if err != nil {
 				log.Fatalf("Failed to bind to hvsock port: %s", err)
 			}
