@@ -7,8 +7,10 @@
 package hvsock
 
 import (
+	"encoding/binary"
 	"fmt"
 	"net"
+	"reflect"
 )
 
 var (
@@ -24,6 +26,9 @@ var (
 	GUIDLoopback, _ = GUIDFromString("e0e16197-dd56-4a10-9195-5ee7a155a838")
 	// GUIDParent use to connect to the parent partition
 	GUIDParent, _ = GUIDFromString("a42e7cda-d03f-480c-9cc2-a4de20abb878")
+
+	// GUIDs for LinuxVMs with the new Hyper-V socket implementation need to match this template
+	guidTemplate, _ = GUIDFromString("00000000-facb-11e6-bd58-64006a7986d3")
 )
 
 const (
@@ -49,6 +54,18 @@ func (g *GUID) String() string {
 		g[7], g[6],
 		g[8], g[9],
 		g[10], g[11], g[12], g[13], g[14], g[15])
+}
+
+// Port converts a Service GUID to a "port" usable by the vsock package.
+// It can be used to convert hvsock code to vsock code. On 4.14.x
+// kernels Service GUIDs for talking to Linux should have the form of
+// xxxxxxxx-facb-11e6-bd58-64006a7986d3, where xxxxxxxx is the vsock port.
+func (g *GUID) Port() (uint32, error) {
+	// Check that the GUID is as expected
+	if !reflect.DeepEqual(g[4:], guidTemplate[4:]) {
+		return 0, fmt.Errorf("%s does not conform with the template", g)
+	}
+	return binary.LittleEndian.Uint32(g[0:4]), nil
 }
 
 // GUIDFromString parses a string and returns a GUID
