@@ -15,13 +15,13 @@ const (
 )
 
 type vsockAddr struct {
-	addr vsock.VsockAddr
+	addr vsock.Addr
 }
 
 // vsockParseSockStr extracts the cid and port from a string.
 // The format is "CID:Port", "CID", or ":Port" as well as an empty string.
 func vsockParseSockStr(sockStr string) vsockAddr {
-	a := vsock.VsockAddr{vsock.CIDAny, vsockPort}
+	a := vsock.Addr{vsock.CIDAny, vsockPort}
 	// For listeners on the host the CID needs to be CIDHost
 	if runtime.GOOS == "darwin" {
 		a.CID = vsock.CIDHost

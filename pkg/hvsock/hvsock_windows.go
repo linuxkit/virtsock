@@ -1,15 +1,18 @@
 package hvsock
 
 import (
-	"errors"
+	"fmt"
 	"io"
 	"log"
+	"net"
 	"runtime"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
+
+	"github.com/pkg/errors"
 )
 
 // Make sure Winsock2 is initialised
@@ -21,36 +24,114 @@ func init() {
 }
 
 const (
-	sysAF_HYPERV     = 34
-	sysSHV_PROTO_RAW = 1
-
-	socket_error = uintptr(^uint32(0))
+	hvsockAF  = 34 // AF_HYPERV
+	hvsockRaw = 1  // SHV_PROTO_RAW
 )
 
 var (
+	// ErrTimeout is an error returned on timeout
 	ErrTimeout = &timeoutError{}
 
 	wsaData syscall.WSAData
 )
 
-// struck sockaddr equivalent
-type rawSockaddrHyperv struct {
-	Family    uint16
-	Reserved  uint16
-	VMID      GUID
-	ServiceID GUID
+// Supported returns if hvsocks are supported on your platform
+func Supported() bool {
+	return true
 }
+
+// Dial a Hyper-V socket address
+func Dial(raddr Addr) (Conn, error) {
+	fd, err := syscall.Socket(hvsockAF, syscall.SOCK_STREAM, hvsockRaw)
+	if err != nil {
+		return nil, err
+	}
+
+	var sa rawSockaddrHyperv
+	ptr, n, err := raddr.sockaddr(&sa)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := sys_connect(fd, ptr, n); err != nil {
+		return nil, errors.Wrapf(err, "connect(%s) failed", raddr)
+	}
+
+	return newHVsockConn(fd, Addr{VMID: GUIDZero, ServiceID: GUIDZero}, raddr)
+}
+
+// Listen returns a net.Listener which can accept connections on the given port
+func Listen(addr Addr) (net.Listener, error) {
+	fd, err := syscall.Socket(hvsockAF, syscall.SOCK_STREAM, hvsockRaw)
+	if err != nil {
+		return nil, err
+	}
+
+	var sa rawSockaddrHyperv
+	ptr, n, err := addr.sockaddr(&sa)
+	if err != nil {
+		return nil, err
+	}
+	if err := sys_bind(fd, ptr, n); err != nil {
+		return nil, fmt.Errorf("bind(%s) failed with %v", addr, err)
+	}
+
+	err = syscall.Listen(fd, syscall.SOMAXCONN)
+	if err != nil {
+		return nil, errors.Wrapf(err, "listen(%s) failed", addr)
+	}
+
+	return &hvsockListener{fd, addr}, nil
+}
+
+//
+// Hyper-v sockets Listener implementation
+//
 
 type hvsockListener struct {
-	acceptFD syscall.Handle
-	laddr    HypervAddr
+	fd    syscall.Handle
+	local Addr
 }
 
-// Internal representation. Complex mostly due to asynch send()/recv() syscalls.
+// Accept accepts an incoming call and returns the new connection
+func (v *hvsockListener) Accept() (net.Conn, error) {
+	var sa rawSockaddrHyperv
+	var n = int32(unsafe.Sizeof(sa))
+	fd, err := sys_accept(v.fd, &sa, &n)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract an Addr from sa
+	raddr := Addr{}
+	for i := 0; i < len(raddr.VMID); i++ {
+		raddr.VMID[i] = sa.VMID[i]
+	}
+	for i := 0; i < len(raddr.ServiceID); i++ {
+		raddr.ServiceID[i] = sa.ServiceID[i]
+	}
+	return newHVsockConn(fd, v.local, raddr)
+}
+
+// Close closes the listening connection
+func (v *hvsockListener) Close() error {
+	return syscall.Close(v.fd)
+}
+
+// Addr returns the address the Listener is listening on
+func (v *hvsockListener) Addr() net.Addr {
+	return v.local
+}
+
+//
+// Hyper-V socket connection implementation
+//
+
+// hvsockConn represent a Hyper-V connection. Complex mostly due to asynch send()/recv() syscalls.
 type hvsockConn struct {
 	fd     syscall.Handle
-	local  HypervAddr
-	remote HypervAddr
+	local  Addr
+	remote Addr
 
 	wg            sync.WaitGroup
 	closing       bool
@@ -58,16 +139,7 @@ type hvsockConn struct {
 	writeDeadline deadlineHandler
 }
 
-type deadlineHandler struct {
-	setLock     sync.Mutex
-	channel     timeoutChan
-	channelLock sync.RWMutex
-	timer       *time.Timer
-	timedout    atomicBool
-}
-
-// Main constructor
-func newHVsockConn(h syscall.Handle, local HypervAddr, remote HypervAddr) (*HVsockConn, error) {
+func newHVsockConn(h syscall.Handle, local Addr, remote Addr) (*hvsockConn, error) {
 	ioInitOnce.Do(initIo)
 	v := &hvsockConn{fd: h, local: local, remote: remote}
 
@@ -83,62 +155,45 @@ func newHVsockConn(h syscall.Handle, local HypervAddr, remote HypervAddr) (*HVso
 	v.readDeadline.channel = make(timeoutChan)
 	v.writeDeadline.channel = make(timeoutChan)
 
-	return &HVsockConn{hvsockConn: *v}, nil
+	return v, nil
 }
 
-// Utility function to build a struct sockaddr for syscalls.
-func (a HypervAddr) sockaddr(sa *rawSockaddrHyperv) (unsafe.Pointer, int32, error) {
-	sa.Family = sysAF_HYPERV
-	sa.Reserved = 0
-	for i := 0; i < len(sa.VMID); i++ {
-		sa.VMID[i] = a.VMID[i]
+// LocalAddr returns the local address of a connection
+func (v *hvsockConn) LocalAddr() net.Addr {
+	return v.local
+}
+
+// RemoteAddr returns the remote address of a connection
+func (v *hvsockConn) RemoteAddr() net.Addr {
+	return v.remote
+}
+
+// Close closes the connection
+func (v *hvsockConn) Close() error {
+	if !v.closing {
+		// cancel all IO and wait for it to complete
+		v.closing = true
+		cancelIoEx(v.fd, nil)
+		v.wg.Wait()
+		// at this point, no new IO can start
+		syscall.Close(v.fd)
+		v.fd = 0
 	}
-	for i := 0; i < len(sa.ServiceID); i++ {
-		sa.ServiceID[i] = a.ServiceID[i]
-	}
-
-	return unsafe.Pointer(sa), int32(unsafe.Sizeof(*sa)), nil
-}
-
-func hvsocket(typ, proto int) (syscall.Handle, error) {
-	return syscall.Socket(sysAF_HYPERV, typ, proto)
-}
-
-func connect(s syscall.Handle, a *HypervAddr) (err error) {
-	var sa rawSockaddrHyperv
-	ptr, n, err := a.sockaddr(&sa)
-	if err != nil {
-		return err
-	}
-
-	return sys_connect(s, ptr, n)
-}
-
-func bind(s syscall.Handle, a HypervAddr) error {
-	var sa rawSockaddrHyperv
-	ptr, n, err := a.sockaddr(&sa)
-	if err != nil {
-		return err
-	}
-
-	return sys_bind(s, ptr, n)
-}
-
-func accept(s syscall.Handle, a *HypervAddr) (syscall.Handle, error) {
-	return 0, errors.New("accept(): Unimplemented")
-}
-
-//
-// File IO/Socket interface
-//
-func (v *HVsockConn) close() error {
-	v.closeHandle()
-
 	return nil
 }
 
-// Underlying raw read() function.
-func (v *HVsockConn) read(buf []byte) (int, error) {
+// CloseRead shuts down the reading side of a hvsock connection
+func (v *hvsockConn) CloseRead() error {
+	return syscall.Shutdown(v.fd, syscall.SHUT_RD)
+}
+
+// CloseWrite shuts down the writing side of a hvsock connection
+func (v *hvsockConn) CloseWrite() error {
+	return syscall.Shutdown(v.fd, syscall.SHUT_WR)
+}
+
+// Read reads data from the connection
+func (v *hvsockConn) Read(buf []byte) (int, error) {
 	var b syscall.WSABuf
 	var f uint32
 
@@ -169,8 +224,28 @@ func (v *HVsockConn) read(buf []byte) (int, error) {
 	}
 }
 
-// Underlying raw write() function.
-func (v *HVsockConn) write(buf []byte) (int, error) {
+// Write writes data over the connection
+// TODO(rn): Remove once 4.9.x support is deprecated
+func (v *hvsockConn) Write(buf []byte) (int, error) {
+	written := 0
+	toWrite := len(buf)
+	for toWrite > 0 {
+		thisBatch := min(toWrite, maxMsgSize)
+		n, err := v.write(buf[written : written+thisBatch])
+		if err != nil {
+			return written, err
+		}
+		if n != thisBatch {
+			return written, fmt.Errorf("short write %d != %d", n, thisBatch)
+		}
+		toWrite -= n
+		written += n
+	}
+
+	return written, nil
+}
+
+func (v *hvsockConn) write(buf []byte) (int, error) {
 	var b syscall.WSABuf
 	var f uint32
 
@@ -198,21 +273,54 @@ func (v *HVsockConn) write(buf []byte) (int, error) {
 }
 
 // SetReadDeadline implementation for Hyper-V sockets
-func (v *HVsockConn) SetReadDeadline(deadline time.Time) error {
+func (v *hvsockConn) SetReadDeadline(deadline time.Time) error {
 	return v.readDeadline.set(deadline)
 }
 
 // SetWriteDeadline implementation for Hyper-V sockets
-func (v *HVsockConn) SetWriteDeadline(deadline time.Time) error {
+func (v *hvsockConn) SetWriteDeadline(deadline time.Time) error {
 	return v.writeDeadline.set(deadline)
 }
 
 // SetDeadline implementation for Hyper-V sockets
-func (v *HVsockConn) SetDeadline(deadline time.Time) error {
+func (v *hvsockConn) SetDeadline(deadline time.Time) error {
 	if err := v.SetReadDeadline(deadline); err != nil {
 		return err
 	}
 	return v.SetWriteDeadline(deadline)
+}
+
+// Helper functions for conversion to sockaddr
+
+// struck sockaddr equivalent
+type rawSockaddrHyperv struct {
+	Family    uint16
+	Reserved  uint16
+	VMID      GUID
+	ServiceID GUID
+}
+
+// Utility function to build a struct sockaddr for syscalls.
+func (a Addr) sockaddr(sa *rawSockaddrHyperv) (unsafe.Pointer, int32, error) {
+	sa.Family = hvsockAF
+	sa.Reserved = 0
+	for i := 0; i < len(sa.VMID); i++ {
+		sa.VMID[i] = a.VMID[i]
+	}
+	for i := 0; i < len(sa.ServiceID); i++ {
+		sa.ServiceID[i] = a.ServiceID[i]
+	}
+
+	return unsafe.Pointer(sa), int32(unsafe.Sizeof(*sa)), nil
+}
+
+// Help for read/write timeouts
+type deadlineHandler struct {
+	setLock     sync.Mutex
+	channel     timeoutChan
+	channelLock sync.RWMutex
+	timer       *time.Timer
+	timedout    atomicBool
 }
 
 // The code below here is adjusted from:
@@ -222,11 +330,6 @@ type atomicBool int32
 func (b *atomicBool) isSet() bool { return atomic.LoadInt32((*int32)(b)) != 0 }
 func (b *atomicBool) setFalse()   { atomic.StoreInt32((*int32)(b), 0) }
 func (b *atomicBool) setTrue()    { atomic.StoreInt32((*int32)(b), 1) }
-
-const (
-	cFILE_SKIP_COMPLETION_PORT_ON_SUCCESS = 1
-	cFILE_SKIP_SET_EVENT_ON_HANDLE        = 2
-)
 
 type timeoutError struct{}
 
@@ -259,23 +362,11 @@ func initIo() {
 	go ioCompletionProcessor(h)
 }
 
-func (v *hvsockConn) closeHandle() {
-	if !v.closing {
-		// cancel all IO and wait for it to complete
-		v.closing = true
-		cancelIoEx(v.fd, nil)
-		v.wg.Wait()
-		// at this point, no new IO can start
-		syscall.Close(v.fd)
-		v.fd = 0
-	}
-}
-
 // prepareIo prepares for a new IO operation
 func (v *hvsockConn) prepareIo() (*ioOperation, error) {
 	v.wg.Add(1)
 	if v.closing {
-		return nil, ErrSocketClosed
+		return nil, fmt.Errorf("HvSocket has already been closed")
 	}
 	c := &ioOperation{}
 	c.ch = make(chan ioResult)
@@ -323,7 +414,7 @@ func (v *hvsockConn) asyncIo(c *ioOperation, d *deadlineHandler, bytes uint32, e
 		err = r.err
 		if err == syscall.ERROR_OPERATION_ABORTED {
 			if v.closing {
-				err = ErrSocketClosed
+				err = fmt.Errorf("HvSocket has already been closed")
 			}
 		}
 	case <-timeout:

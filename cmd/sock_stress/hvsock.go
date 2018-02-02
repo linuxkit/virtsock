@@ -6,14 +6,22 @@ import (
 	"strings"
 
 	"github.com/linuxkit/virtsock/pkg/hvsock"
+	"github.com/linuxkit/virtsock/pkg/vsock"
 )
 
 var (
 	svcid, _ = hvsock.GUIDFromString("3049197C-FACB-11E6-BD58-64006A7986D3")
+	useHVSock = false
 )
 
 type hvsockAddr struct {
-	addr hvsock.HypervAddr
+	hvAddr hvsock.Addr
+	vAddr  vsock.Addr
+}
+
+func init() {
+	// Check which version (hvsock/vsock) we should use for Hyper-V sockets
+	useHVSock = hvsock.Supported()
 }
 
 // hvsockParseSockStr extracts the vmid and svcid from a string.
@@ -21,9 +29,11 @@ type hvsockAddr struct {
 // empty string. For VMID we also support "parent" and assume
 // "loopback" if the string can't be parsed.
 func hvsockParseSockStr(sockStr string) hvsockAddr {
-	a := hvsock.HypervAddr{hvsock.GUIDZero, svcid}
+	hvAddr := hvsock.Addr{hvsock.GUIDZero, svcid}
+	port, _ := svcid.Port() 
+	vAddr := vsock.Addr{vsock.CIDAny, port}
 	if sockStr == "" {
-		return hvsockAddr{a}
+		return hvsockAddr{hvAddr: hvAddr, vAddr: vAddr}
 	}
 
 	var err error
@@ -40,38 +50,57 @@ func hvsockParseSockStr(sockStr string) hvsockAddr {
 
 	if vmStr != "" {
 		if strings.Contains(vmStr, "-") {
-			a.VMID, err = hvsock.GUIDFromString(vmStr)
+			if !useHVSock {
+				log.Fatalf("Can't use VM GUIDs in vsock mode")			
+			}
+			hvAddr.VMID, err = hvsock.GUIDFromString(vmStr)
 			if err != nil {
 				log.Fatalf("Error parsing VM '%s': %v", vmStr, err)
 			}
-		} else if clientStr == "parent" {
-			a.VMID = hvsock.GUIDParent
+		} else if vmStr == "parent" {
+			hvAddr.VMID = hvsock.GUIDParent
+			vAddr.CID = vsock.CIDHost
 		} else {
-			a.VMID = hvsock.GUIDLoopback
+			hvAddr.VMID = hvsock.GUIDLoopback
+			vAddr.CID = vsock.CIDHypervisor
 		}
 	}
 
 	if svcStr != "" {
-		a.ServiceID, err = hvsock.GUIDFromString(svcStr)
-		if err != nil {
+		if hvAddr.ServiceID, err = hvsock.GUIDFromString(svcStr); err != nil {
 			log.Fatalf("Error parsing SVC '%s': %v", svcStr, err)
 		}
+		if !useHVSock {
+			if vAddr.Port, err = hvAddr.ServiceID.Port(); err != nil {
+				log.Fatal("Error parsing SVC '%s': %v", svcStr, err)
+			}
+		}
 	}
-	return hvsockAddr{a}
+	return hvsockAddr{hvAddr: hvAddr, vAddr: vAddr}
 }
 
 func (s hvsockAddr) String() string {
-	return s.addr.String()
+	return s.hvAddr.String()
 }
 
 // Dial connects on a Hyper-V socket
 func (s hvsockAddr) Dial(conid int) (Conn, error) {
-	return hvsock.Dial(s.addr)
+	if !useHVSock {
+		return vsock.Dial(s.vAddr.CID, s.vAddr.Port)
+	}
+	return hvsock.Dial(s.hvAddr)
 }
 
 // Listen returns a net.Listener for a given Hyper-V socket
 func (s hvsockAddr) Listen() net.Listener {
-	l, err := hvsock.Listen(s.addr)
+	if !useHVSock {
+		l, err := vsock.Listen(s.vAddr.CID, s.vAddr.Port)
+		if err != nil {
+			log.Fatalln("Listen():", err)
+		}
+		return l
+	}
+	l, err := hvsock.Listen(s.hvAddr)
 	if err != nil {
 		log.Fatalln("Listen():", err)
 	}

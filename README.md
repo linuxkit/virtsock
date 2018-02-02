@@ -48,13 +48,49 @@ linux$ sock_stress -c vsock://2 -v 1
 
 ### Windows
 
-TBD
+On Windows we currently only support the server to be run inside the
+VM and the host connecting to it. In the future we will support
+running the server on the host as well.
+
+For Linux guests on Windows there are two different implmentations,
+one in the LinuxKit 4.9.x kernels and one in 4.14.x upstream
+kernels. They require different protocols to be used. The
+`sock_stress` and `vsudd` programs automatically detect which version
+to use.
+
+Boot the Linux VM (from an elevated powershell):
+```
+linuxkit run -name hvtest hvtest-efi.iso
+```
+
+Run the server in the VM and client on the host:
+```
+linux$ sock_stress -v 1 -s hvsock
+win$ sock_stress -v 1 -c hvsock://<VM ID>
+```
+(where `<VM ID>` is from the output of: `(get-vm hvtest).Id`)
+
+Run the server on the host and the client inside the VM:
+```
+win$ sock_stress -v 1 -s hvsock
+linux$ sock_stress -v 1 -c hvsock://parent
+```
+**Note:** This may fail on the client with receiving unexpected EOFs (see below).
+
 
 ## Known limitations
 
-- `hvsock`: The Windows side does not implement `accept()` due to
-  limitations on some Windows builds where a VM can not connect to the
-  host via Hyper-V sockets.
+- `hvsock`: When running the server on the host with a client in a
+  Linux VM, it looks like unidirectional `shutdown()` is not working
+  properly. There appears to be a race of sort.
+
+- `hvsock`: Hyper-V socket implementations prior to Windows build
+  10586 (aka 1511, aka Threshold 2) was buggy. There may even be
+  issues with build prior to build 14393 (aka 1607, aka Redstone 1).
+  
+- `hvsock`: Earlier versions of this code supported the older Windows
+  builds, but support has now been removed. If you require the older version,
+  please use the `end_10586_tag`.
 
 - `vsock`: There is general host side implementation as the interface
   is hypervisor specific. The `vsock` package includes some support

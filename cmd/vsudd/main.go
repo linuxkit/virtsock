@@ -134,11 +134,26 @@ func main() {
 			if err != nil {
 				log.Fatalln("Failed to parse GUID", portstr, err)
 			}
-			l, err = hvsock.Listen(hvsock.HypervAddr{VMID: hvsock.GUIDWildcard, ServiceID: svcid})
-			if err != nil {
-				log.Fatalf("Failed to bind to hvsock port: %s", err)
+			// Check which version of Hyper-V socket bindings to use
+			if hvsock.Supported() {
+				// Use old interface
+				l, err = hvsock.Listen(hvsock.Addr{VMID: hvsock.GUIDWildcard, ServiceID: svcid})
+				if err != nil {
+					log.Fatalf("Failed to bind to hvsock port: %s", err)
+				}
+				log.Printf("Listening on ServiceId %s using hvsock", svcid)
+			} else {
+				// Use new interface
+				port, err := svcid.Port()
+				if err != nil {
+					log.Fatalf("Failed to convert hvsock port: %s", err)
+				}
+				l, err = vsock.Listen(vsock.CIDAny, port)
+				if err != nil {
+					log.Fatalf("Failed to bind to vsock port: %s", err)
+				}
+				log.Printf("Listening on ServiceId %s using vsock", svcid)
 			}
-			log.Printf("Listening on ServiceId %s", svcid)
 			useHVsock = true
 		} else {
 			port, err := strconv.ParseUint(portstr, 10, 32)

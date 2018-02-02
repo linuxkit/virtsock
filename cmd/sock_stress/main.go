@@ -12,8 +12,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/linuxkit/virtsock/pkg/hvsock"
 )
 
 const (
@@ -109,11 +107,6 @@ func main() {
 	log.SetFlags(log.LstdFlags)
 	flag.Parse()
 	hostInit()
-
-	if verbose > 2 {
-		hvsock.Debug = true
-		// vsock does not have debug
-	}
 
 	var n string
 	var s Sock
