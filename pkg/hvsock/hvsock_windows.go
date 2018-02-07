@@ -133,8 +133,10 @@ type hvsockConn struct {
 	local  Addr
 	remote Addr
 
-	wg            sync.WaitGroup
-	closing       bool
+	wg      sync.WaitGroup
+	wgLock  sync.RWMutex
+	closing atomicBool
+
 	readDeadline  deadlineHandler
 	writeDeadline deadlineHandler
 }
@@ -170,15 +172,7 @@ func (v *hvsockConn) RemoteAddr() net.Addr {
 
 // Close closes the connection
 func (v *hvsockConn) Close() error {
-	if !v.closing {
-		// cancel all IO and wait for it to complete
-		v.closing = true
-		cancelIoEx(v.fd, nil)
-		v.wg.Wait()
-		// at this point, no new IO can start
-		syscall.Close(v.fd)
-		v.fd = 0
-	}
+	v.close()
 	return nil
 }
 
@@ -204,6 +198,7 @@ func (v *hvsockConn) Read(buf []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer v.wg.Done()
 
 	if v.readDeadline.timedout.isSet() {
 		return 0, ErrTimeout
@@ -261,6 +256,8 @@ func (v *hvsockConn) write(buf []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer v.wg.Done()
+
 	if v.writeDeadline.timedout.isSet() {
 		return 0, ErrTimeout
 	}
@@ -330,6 +327,13 @@ type atomicBool int32
 func (b *atomicBool) isSet() bool { return atomic.LoadInt32((*int32)(b)) != 0 }
 func (b *atomicBool) setFalse()   { atomic.StoreInt32((*int32)(b), 0) }
 func (b *atomicBool) setTrue()    { atomic.StoreInt32((*int32)(b), 1) }
+func (b *atomicBool) swap(new bool) bool {
+	var newInt int32
+	if new {
+		newInt = 1
+	}
+	return atomic.SwapInt32((*int32)(b), newInt) == 1
+}
 
 type timeoutError struct{}
 
@@ -362,12 +366,30 @@ func initIo() {
 	go ioCompletionProcessor(h)
 }
 
+func (v *hvsockConn) close() {
+	v.wgLock.Lock()
+	if !v.closing.swap(true) {
+		v.wgLock.Unlock()
+		// cancel all IO and wait for it to complete
+		cancelIoEx(v.fd, nil)
+		v.wg.Wait()
+		// at this point, no new IO can start
+		syscall.Close(v.fd)
+		v.fd = 0
+	} else {
+		v.wgLock.Unlock()
+	}
+}
+
 // prepareIo prepares for a new IO operation
 func (v *hvsockConn) prepareIo() (*ioOperation, error) {
-	v.wg.Add(1)
-	if v.closing {
+	v.wgLock.RLock()
+	if v.closing.isSet() {
+		v.wgLock.RUnlock()
 		return nil, fmt.Errorf("HvSocket has already been closed")
 	}
+	v.wg.Add(1)
+	v.wgLock.RUnlock()
 	c := &ioOperation{}
 	c.ch = make(chan ioResult)
 	return c, nil
@@ -393,11 +415,10 @@ func ioCompletionProcessor(h syscall.Handle) {
 // the operation has actually completed.
 func (v *hvsockConn) asyncIo(c *ioOperation, d *deadlineHandler, bytes uint32, err error) (int, error) {
 	if err != syscall.ERROR_IO_PENDING {
-		v.wg.Done()
 		return int(bytes), err
 	}
 
-	if v.closing {
+	if v.closing.isSet() {
 		cancelIoEx(v.fd, &c.o)
 	}
 
@@ -413,7 +434,7 @@ func (v *hvsockConn) asyncIo(c *ioOperation, d *deadlineHandler, bytes uint32, e
 	case r = <-c.ch:
 		err = r.err
 		if err == syscall.ERROR_OPERATION_ABORTED {
-			if v.closing {
+			if v.closing.isSet() {
 				err = fmt.Errorf("HvSocket has already been closed")
 			}
 		}
@@ -430,7 +451,6 @@ func (v *hvsockConn) asyncIo(c *ioOperation, d *deadlineHandler, bytes uint32, e
 	// code to ioCompletionProcessor, c must remain alive
 	// until the channel read is complete.
 	runtime.KeepAlive(c)
-	v.wg.Done()
 	return int(r.bytes), err
 }
 
