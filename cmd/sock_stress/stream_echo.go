@@ -74,6 +74,8 @@ func (t streamEcho) Client(s Sock, conid int) {
 	if maxDataLen > minDataLen {
 		buflen += rand.Intn(maxDataLen - minDataLen + 1)
 	}
+	prDebug("[%05d] Send and receive %d bytes with %d:%d buffer sizes\n", conid, buflen, minBufLen, maxBufLen)
+
 	hash0 := md5.New()
 
 	var txTime, rxTime time.Duration
@@ -165,11 +167,11 @@ func (t streamEcho) Client(s Sock, conid int) {
 		select {
 		case err := <-e:
 			if err != nil {
-				prError("[%05d] Failed to receive: %s\n", conid, err)
+				prError("[%05d] Failed to receive after %d of %d bytes: %s\n", conid, totalReceived, buflen, err)
 				break
 			}
 		case <-time.After(ioTimeout):
-			prError("[%05d] Receive timed out\n", conid)
+			prError("[%05d] Receive timed out after %d of %d bytes\n", conid, totalReceived, buflen)
 			break
 		}
 
