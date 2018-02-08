@@ -74,6 +74,8 @@ func (t streamEcho) Client(s Sock, conid int) {
 	if maxDataLen > minDataLen {
 		buflen += rand.Intn(maxDataLen - minDataLen + 1)
 	}
+	prDebug("[%05d] Send and receive %d bytes with %d:%d buffer sizes\n", conid, buflen, minBufLen, maxBufLen)
+
 	hash0 := md5.New()
 
 	var txTime, rxTime time.Duration
@@ -152,7 +154,7 @@ func (t streamEcho) Client(s Sock, conid int) {
 
 		e := make(chan error, 0)
 		go func() {
-			l, err := io.ReadFull(c, rxbuf)
+			l, err := readFull(c, rxbuf)
 			if err != nil {
 				e <- err
 			} else if l != batch {
@@ -165,11 +167,11 @@ func (t streamEcho) Client(s Sock, conid int) {
 		select {
 		case err := <-e:
 			if err != nil {
-				prError("[%05d] Failed to receive: %s\n", conid, err)
+				prError("[%05d] Failed to receive after %d of %d bytes: %s\n", conid, totalReceived, buflen, err)
 				break
 			}
 		case <-time.After(ioTimeout):
-			prError("[%05d] Receive timed out\n", conid)
+			prError("[%05d] Receive timed out after %d of %d bytes\n", conid, totalReceived, buflen)
 			break
 		}
 
@@ -189,4 +191,21 @@ func (t streamEcho) Client(s Sock, conid int) {
 	if csum0 != csum1 {
 		prError("[%05d] Checksums don't match", conid)
 	}
+}
+
+func readFull(r io.Reader, buf []byte) (n int, err error) {
+	min := len(buf)
+	for n < min && err == nil {
+		var nn int
+		nn, err = r.Read(buf[n:])
+		n += nn
+	}
+	if n >= min {
+		err = nil
+	} else if n > 0 && err == io.EOF {
+		err = fmt.Errorf("Unexpected EOF after reading %d of %d bytes", n, min)
+	} else if err != nil {
+		err = fmt.Errorf("Error after reading %d of %d bytes: %v", n, min, err)
+	}
+	return
 }
