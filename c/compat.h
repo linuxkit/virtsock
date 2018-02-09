@@ -111,6 +111,15 @@ DEFINE_GUID(HV_GUID_PARENT,
 #ifndef VMADDR_CID_ANY
 #define VMADDR_CID_ANY -1U
 #endif
+#ifndef VMADDR_CID_HYPERVISOR
+#define VMADDR_CID_HYPERVISOR 0
+#endif
+#ifndef VMADDR_CID_RESERVED
+#define VMADDR_CID_RESERVED 1
+#endif
+#ifndef VMADDR_CID_HOST
+#define VMADDR_CID_HOST 2
+#endif
 typedef struct _SOCKADDR_VM
 {
     unsigned short Family;

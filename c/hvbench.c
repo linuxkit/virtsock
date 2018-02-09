@@ -166,7 +166,6 @@ err_out:
     return ret;
 }
 
-
 /*
  * Main server and client entry points
  */
@@ -192,8 +191,8 @@ static int server(int bm, int msg_sz)
 
     memset(&savm, 0, sizeof(savm));
     savm.Family = AF_VSOCK;
+    savm.SvmCID = VMADDR_CID_ANY;
     savm.SvmPort = BM_PORT;
-    savm.SvmCID = VMADDR_CID_ANY; /* Ignore target here */
 
     memset(&sahv, 0, sizeof(sahv));
     sahv.Family = AF_HYPERV;
@@ -257,8 +256,8 @@ err_out:
     return ret;
 }
 
-
-static int client(GUID target, int bm, int msg_sz)
+static int client(GUID target_guid, unsigned int target_cid,
+                  int bm, int msg_sz)
 {
     SOCKET fd;
     SOCKADDR_VM savm;
@@ -279,12 +278,12 @@ static int client(GUID target, int bm, int msg_sz)
 
     memset(&sahv, 0, sizeof(sahv));
     savm.Family = AF_VSOCK;
+    savm.SvmCID = target_cid;
     savm.SvmPort = BM_PORT;
-    savm.SvmCID = VMADDR_CID_ANY; /* Ignore target here */
 
     memset(&sahv, 0, sizeof(sahv));
     sahv.Family = AF_HYPERV;
-    sahv.VmId = target;
+    sahv.VmId = target_guid;
     sahv.ServiceId = BM_GUID;
 
     if (opt_vsock)
@@ -320,7 +319,7 @@ err_out:
 
 /* Different client for connection tests */
 #define BM_CONN_TIMEOUT 500 /* 500ms */
-static int client_conn(GUID target)
+static int client_conn(GUID target_guid, unsigned int target_cid)
 {
     uint64_t start, end, diff;
     int histogram[3 * 9 + 3];
@@ -348,12 +347,12 @@ static int client_conn(GUID target)
 
         memset(&sahv, 0, sizeof(sahv));
         savm.Family = AF_VSOCK;
+        savm.SvmCID = target_cid;
         savm.SvmPort = BM_PORT;
-        savm.SvmCID = VMADDR_CID_ANY; /* Ignore target here */
 
         memset(&sahv, 0, sizeof(sahv));
         sahv.Family = AF_HYPERV;
-        sahv.VmId = target;
+        sahv.VmId = target_guid;
         sahv.ServiceId = BM_GUID;
 
         start = time_ns();
@@ -445,7 +444,9 @@ int __cdecl main(int argc, char **argv)
     int opt_server = 0;
     int opt_bm = 0;
     int opt_msgsz = 0;
-    GUID target;
+    GUID target_guid;
+    unsigned int target_cid;
+    char *target_str = NULL;
     int res = 0;
     int i;
 
@@ -470,15 +471,13 @@ int __cdecl main(int argc, char **argv)
                 goto out;
             }
             if (strcmp(argv[i + 1], "loopback") == 0) {
-                target = HV_GUID_LOOPBACK;
+                target_guid = HV_GUID_LOOPBACK;
+                target_cid = VMADDR_CID_HYPERVISOR;
             } else if (strcmp(argv[i + 1], "parent") == 0) {
-                target = HV_GUID_PARENT;
+                target_guid = HV_GUID_PARENT;
+                target_cid = VMADDR_CID_HOST;
             } else {
-                res = parseguid(argv[i + 1], &target);
-                if (res != 0) {
-                    fprintf(stderr, "failed to scan: %s\n", argv[i + 1]);
-                    goto out;
-                }
+                target_str = argv[i + 1];
             }
             i++;
 
@@ -515,6 +514,18 @@ int __cdecl main(int argc, char **argv)
     }
 #endif
 
+    if (target_str) {
+        if (opt_vsock) {
+            target_cid = strtoul(target_str, NULL, 0);
+        } else {
+            res = parseguid(target_str, &target_guid);
+            if (res != 0) {
+                fprintf(stderr, "failed to scan: %s\n", target_str);
+                goto out;
+            }
+        }
+    }
+
     if (!opt_bm) {
         fprintf(stderr, "You need to specify a test\n");
         goto out;
@@ -528,9 +539,9 @@ int __cdecl main(int argc, char **argv)
         res = server(opt_bm, opt_msgsz);
     } else {
         if (opt_bm == BM_CONN)
-            res = client_conn(target);
+            res = client_conn(target_guid, target_cid);
         else
-            res = client(target, opt_bm, opt_msgsz);
+            res = client(target_guid, target_cid, opt_bm, opt_msgsz);
     }
 
 out:

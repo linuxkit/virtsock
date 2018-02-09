@@ -182,8 +182,8 @@ static int server(int multi_threaded, int max_conn)
 
     memset(&savm, 0, sizeof(savm));
     savm.Family = AF_VSOCK;
+    savm.SvmCID = VMADDR_CID_ANY;
     savm.SvmPort = SERVICE_PORT;
-    savm.SvmCID = VMADDR_CID_ANY; /* Ignore target here */
 
     memset(&sahv, 0, sizeof(sahv));
     sahv.Family = AF_HYPERV;
@@ -270,7 +270,8 @@ static int server(int multi_threaded, int max_conn)
 /* Arguments for client threads */
 struct client_args {
     THREAD_HANDLE h;
-    GUID target;
+    GUID target_guid;
+    unsigned int target_cid;
     int id;
     int conns;
     int rand;
@@ -318,7 +319,8 @@ out:
 }
 
 /* Client code for a single connection */
-static int client_one(GUID target, int id, int conn)
+static int client_one(GUID target_guid, unsigned int target_cid,
+                      int id, int conn)
 {
     struct client_tx_args args;
     uint64_t start, end, diff;
@@ -336,7 +338,7 @@ static int client_one(GUID target, int id, int conn)
 
     start = time_ns();
 
-        if (opt_vsock)
+    if (opt_vsock)
         fd = socket(AF_VSOCK, SOCK_STREAM, 0);
     else
         fd = socket(AF_HYPERV, SOCK_STREAM, HV_PROTOCOL_RAW);
@@ -347,15 +349,15 @@ static int client_one(GUID target, int id, int conn)
 
     if (opt_vsock) {
         savm.Family = AF_VSOCK;
+        savm.SvmCID = target_cid;
         savm.SvmPort = SERVICE_PORT;
-        savm.SvmCID = VMADDR_CID_ANY; /* Ignore target here */
         DBG("[%02d:%05d] Connected to: 0x%08x.0x%08x fd=%d\n",
             id, conn, savm.SvmCID, savm.SvmPort, (int)fd);
         res = connect(fd, (const struct sockaddr *)&savm, sizeof(savm));
     } else {
         sahv.Family = AF_HYPERV;
         sahv.Reserved = 0;
-        sahv.VmId = target;
+        sahv.VmId = target_guid;
         sahv.ServiceId = SERVICE_GUID;
         DBG("[%02d:%05d] Connected to: "GUID_FMT":"GUID_FMT" fd=%d\n",
             id, conn, GUID_ARGS(sahv.VmId), GUID_ARGS(sahv.ServiceId), (int)fd);
@@ -426,7 +428,7 @@ static void *client_thd(void *a)
         srand(time(NULL) + args->id);
 
     for (i = 0; i < args->conns; i++) {
-        res = client_one(args->target, args->id, i);
+        res = client_one(args->target_guid, args->target_cid, args->id, i);
         if (res)
             break;
     }
@@ -466,7 +468,9 @@ int __cdecl main(int argc, char **argv)
     int opt_server = 0;
     int opt_rand = 0;
     int opt_par = 1;
-    GUID target;
+    GUID target_guid;
+    unsigned int target_cid;
+    char *target_str = NULL;
     int res = 0;
     int i;
 
@@ -491,15 +495,13 @@ int __cdecl main(int argc, char **argv)
                 goto out;
             }
             if (strcmp(argv[i + 1], "loopback") == 0) {
-                target = HV_GUID_LOOPBACK;
+                target_guid = HV_GUID_LOOPBACK;
+                target_cid = VMADDR_CID_HYPERVISOR;
             } else if (strcmp(argv[i + 1], "parent") == 0) {
-                target = HV_GUID_PARENT;
+                target_guid = HV_GUID_PARENT;
+                target_cid = VMADDR_CID_HOST;
             } else {
-                res = parseguid(argv[i + 1], &target);
-                if (res != 0) {
-                    fprintf(stderr, "failed to scan: %s\n", argv[i + 1]);
-                    goto out;
-                }
+                target_str = argv[i + 1];
             }
             i++;
 
@@ -547,6 +549,18 @@ int __cdecl main(int argc, char **argv)
     }
 #endif
 
+    if (target_str) {
+        if (opt_vsock) {
+            target_cid = strtoul(target_str, NULL, 0);
+        } else {
+            res = parseguid(target_str, &target_guid);
+            if (res != 0) {
+                fprintf(stderr, "failed to scan: %s\n", target_str);
+                goto out;
+            }
+        }
+    }
+
     if (opt_server) {
         server(opt_multi_thds, opt_conns);
     } else {
@@ -567,7 +581,8 @@ int __cdecl main(int argc, char **argv)
 
         /* Create threads */
         for (i = 0; i < opt_par; i++) {
-            args[i].target = target;
+            args[i].target_guid = target_guid;
+            args[i].target_cid = target_cid;
             args[i].id = i;
             args[i].conns = opt_conns / opt_par;
             args[i].rand = opt_rand;
