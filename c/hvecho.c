@@ -91,8 +91,8 @@ static int server(void)
 
     memset(&savm, 0, sizeof(savm));
     savm.Family = AF_VSOCK;
+    savm.SvmCID = VMADDR_CID_ANY;
     savm.SvmPort = SERVICE_PORT;
-    savm.SvmCID = VMADDR_CID_ANY; /* Ignore target here */
 
     memset(&sahv, 0, sizeof(sahv));
     sahv.Family = AF_HYPERV;
@@ -147,7 +147,7 @@ static int server(void)
 /* The client sends a messages, and waits for the echo before shutting
  * down the send side. It then expects a bye message from the server.
  */
-static int client(GUID target)
+static int client(GUID target_guid, unsigned int target_cid)
 {
     SOCKET fd = INVALID_SOCKET;
     SOCKADDR_VM savm;
@@ -168,12 +168,12 @@ static int client(GUID target)
 
     memset(&sahv, 0, sizeof(sahv));
     savm.Family = AF_VSOCK;
+    savm.SvmCID = target_cid;
     savm.SvmPort = SERVICE_PORT;
-    savm.SvmCID = VMADDR_CID_ANY; /* Ignore target here */
 
     memset(&sahv, 0, sizeof(sahv));
     sahv.Family = AF_HYPERV;
-    sahv.VmId = target;
+    sahv.VmId = target_guid;
     sahv.ServiceId = SERVICE_GUID;
 
     if (opt_vsock) {
@@ -254,7 +254,9 @@ int __cdecl main(int argc, char **argv)
 {
     int opt_server;
     int res = 0;
-    GUID target;
+    GUID target_guid;
+    unsigned int target_cid;
+    char *target_str = NULL;
     int i;
 
 #ifdef _MSC_VER
@@ -278,15 +280,13 @@ int __cdecl main(int argc, char **argv)
                 goto out;
             }
             if (strcmp(argv[i + 1], "loopback") == 0) {
-                target = HV_GUID_LOOPBACK;
+                target_guid = HV_GUID_LOOPBACK;
+                target_cid = VMADDR_CID_HYPERVISOR;
             } else if (strcmp(argv[i + 1], "parent") == 0) {
-                target = HV_GUID_PARENT;
+                target_guid = HV_GUID_PARENT;
+                target_cid = VMADDR_CID_HOST;
             } else {
-                res = parseguid(argv[i + 1], &target);
-                if (res != 0) {
-                    fprintf(stderr, "failed to scan: %s\n", argv[i + 1]);
-                    goto out;
-                }
+                target_str = argv[i + 1];
             }
             i++;
 
@@ -306,10 +306,22 @@ int __cdecl main(int argc, char **argv)
     }
 #endif
 
+    if (target_str) {
+        if (opt_vsock) {
+            target_cid = strtoul(target_str, NULL, 0);
+        } else {
+            res = parseguid(target_str, &target_guid);
+            if (res != 0) {
+                fprintf(stderr, "failed to scan: %s\n", target_str);
+                goto out;
+            }
+        }
+    }
+
     if (opt_server)
         res = server();
     else
-        res = client(target);
+        res = client(target_guid, target_cid);
 
 out:
 #ifdef _MSC_VER
