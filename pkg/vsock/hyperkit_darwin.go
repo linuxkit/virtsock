@@ -35,7 +35,7 @@ func SocketMode(socketMode string) {
 	if strings.HasPrefix(socketMode, "hyperkit:") {
 		socketPath = socketMode[len("hyperkit:"):]
 	} else if socketMode == "docker" {
-		socketPath = filepath.Join(os.Getenv("HOME"), "/Library/Containers/com.docker.docker/Data")
+		socketPath = filepath.Join(os.Getenv("HOME"), "/Library/Containers/com.docker.docker/Data/vms/0")
 	} else {
 		log.Fatalln("Unknown socket mode: ", socketMode)
 	}
