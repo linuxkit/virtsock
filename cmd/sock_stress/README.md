@@ -4,7 +4,12 @@
 
 Under Windows, we assume Docker for Windows is installed since this ships with a suitably patched Linux kernel (though the tests can also be run to a Windows VM).  Currently, there is also the restriction that one can only connect from the host to the (Linux) VM.
 
-Build a Linux container with the test program as shown below.
+First register the Hyper-V socket GUID in the registry. Follow the instructions on [making an integration service](https://docs.microsoft.com/en-gb/virtualization/hyper-v-on-windows/user-guide/make-integration-service):
+
+- create a new registry key (e.g. with `regedit.exe`) called `3049197C-FACB-11E6-BD58-64006A7986D3` under `HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Virtualization\GuestCommunicationServices`
+- inside the new key create a String value called `ElementName`. The Data can be anything you like but typically this is a description such as "sock_stress".
+
+Next build a Linux container with the test program as shown below.
 
 ## Linux
 
