@@ -30,7 +30,7 @@ int connect_sockaddr_hv(int fd, const struct sockaddr_hv *sa_hv) {
     return connect(fd, (const struct sockaddr*)sa_hv, sizeof(*sa_hv));
 }
 int accept_hv(int fd, struct sockaddr_hv *sa_hv, socklen_t *sa_hv_len) {
-    return accept4(fd, (struct sockaddr *)sa_hv, sa_hv_len, 0);
+    return accept(fd, (struct sockaddr *)sa_hv, sa_hv_len);
 }
 int getsockname_hv(int fd, struct sockaddr_hv *sa_hv, socklen_t *sa_hv_len) {
     return getsockname(fd, (struct sockaddr *)sa_hv, sa_hv_len);
