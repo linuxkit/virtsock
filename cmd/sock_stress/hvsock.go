@@ -72,7 +72,7 @@ func hvsockParseSockStr(sockStr string) hvsockAddr {
 		}
 		if !useHVSock {
 			if vAddr.Port, err = hvAddr.ServiceID.Port(); err != nil {
-				log.Fatal("Error parsing SVC '%s': %v", svcStr, err)
+				log.Fatalf("Error parsing SVC '%s': %v", svcStr, err)
 			}
 		}
 	}
