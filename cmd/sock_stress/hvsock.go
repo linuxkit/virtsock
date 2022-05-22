@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	svcid, _ = hvsock.GUIDFromString("3049197C-FACB-11E6-BD58-64006A7986D3")
+	svcid, _  = hvsock.GUIDFromString("3049197C-FACB-11E6-BD58-64006A7986D3")
 	useHVSock = false
 )
 
@@ -30,7 +30,7 @@ func init() {
 // "loopback" if the string can't be parsed.
 func hvsockParseSockStr(sockStr string) hvsockAddr {
 	hvAddr := hvsock.Addr{hvsock.GUIDZero, svcid}
-	port, _ := svcid.Port() 
+	port, _ := svcid.Port()
 	vAddr := vsock.Addr{vsock.CIDAny, port}
 	if sockStr == "" {
 		return hvsockAddr{hvAddr: hvAddr, vAddr: vAddr}
@@ -51,7 +51,7 @@ func hvsockParseSockStr(sockStr string) hvsockAddr {
 	if vmStr != "" {
 		if strings.Contains(vmStr, "-") {
 			if !useHVSock {
-				log.Fatalf("Can't use VM GUIDs in vsock mode")			
+				log.Fatalf("Can't use VM GUIDs in vsock mode")
 			}
 			hvAddr.VMID, err = hvsock.GUIDFromString(vmStr)
 			if err != nil {
