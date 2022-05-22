@@ -1,0 +1,4 @@
+github.com/pkg/errors v0.8.1-0.20170910134614-2b3a18b5f0fb h1:CKWls8QOVQs/qmuUuGOeHMpIqSx6f9S72udJ48vEeKo=
+github.com/pkg/errors v0.8.1-0.20170910134614-2b3a18b5f0fb/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
+golang.org/x/sys v0.0.0-20170511214829-9c9d83fe39ed h1:zZ09nMxaZ+d+ObsmknNM+RrXWBw+22dzC/Fm62ueXgs=
+golang.org/x/sys v0.0.0-20170511214829-9c9d83fe39ed/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
