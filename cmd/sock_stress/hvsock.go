@@ -28,25 +28,18 @@ func init() {
 // The format is "VMID:Service", "VMID", or ":Service" as well as an
 // empty string. For VMID we also support "parent" and assume
 // "loopback" if the string can't be parsed.
-func hvsockParseSockStr(sockStr string) hvsockAddr {
+func hvsockParseSockStr(vmStr, svcStr string) hvsockAddr {
 	hvAddr := hvsock.Addr{hvsock.GUIDZero, svcid}
 	port, _ := svcid.Port()
 	vAddr := vsock.Addr{vsock.CIDAny, port}
-	if sockStr == "" {
+	if svcStr != "" && svcStr[0] == '/' {
+		svcStr = svcStr[1:]
+	}
+	if vmStr == "" && svcStr == "" {
 		return hvsockAddr{hvAddr: hvAddr, vAddr: vAddr}
 	}
 
 	var err error
-	vmStr := ""
-	svcStr := ""
-	if strings.Contains(sockStr, ":") {
-		vmStr, svcStr, err = net.SplitHostPort(sockStr)
-		if err != nil {
-			log.Fatalf("Error parsing socket string '%s': %v", sockStr, err)
-		}
-	} else {
-		vmStr = sockStr
-	}
 
 	if vmStr != "" {
 		if strings.Contains(vmStr, "-") {

@@ -99,6 +99,7 @@ func init() {
 		fmt.Printf("  %s -s vsock            Start server in vsock mode on standard port\n", prog)
 		fmt.Printf("  %s -s vsock://:1235    Start server in vsock mode on a non-standard port\n", prog)
 		fmt.Printf("  %s -c hvsock://<vmid>  Start client in hvsock mode connecting to VM with <vmid>\n", prog)
+		fmt.Printf("  %s -c hvsock://<vmid>/<svcid>  Start client in hvsock mode connecting to VM with <vmid> on a non-standard <svcid>\n", prog)
 	}
 	rand.Seed(time.Now().UnixNano())
 }
@@ -172,7 +173,7 @@ func parseSockStr(inStr string) (string, Sock) {
 	case "vsock":
 		return u.Scheme, vsockParseSockStr(u.Host)
 	case "hvsock":
-		return u.Scheme, hvsockParseSockStr(u.Host)
+		return u.Scheme, hvsockParseSockStr(u.Host, u.Path)
 	case "tcp", "tcp4", "tcp6":
 		return u.Scheme, tcpParseSockStr(u.Scheme, u.Host)
 	case "udp", "udp4", "udp6":
